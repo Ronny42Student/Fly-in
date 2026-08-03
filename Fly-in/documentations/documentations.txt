@@ -1,0 +1,22 @@
+Etape 1:
+Créer les classes de base: Zone (ou Hub), Connection, et Drone
+
+Spécifications du sujet à intégrer:
+    - Types de zones:
+        * "normal" (coût 1),
+        * "restricted" (coût 2),
+        * "priority" (coût 1, à privilégier),
+        * "blocked" (inaccessible)
+
+    - Capacités:
+        * chaques zone a un "max_drones" (par défaut 1),
+        * chaque connexion a un "max_link_capacity" (par défaut 1),
+    - Les coordonnées sont des entiers
+
+Etape 2:
+    Ecrire une classe Parser qui prend un fichier d'une carte et retourne le nombre de drones,
+    la zone de départ, et le dictionnaire de toutes les zones et connexions.
+
+Etape 3:
+    Initialiser une fenêtre pygame, dessiner les zones sous forme de cercles (en utilisant leurs coordonnées (x, y))
+    adaptées à la taille de l'écran et tracer des lignes pour les connexions entre les zones.
