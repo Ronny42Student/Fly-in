@@ -5,7 +5,11 @@ from models import Connection, Zone, ZoneType
 
 
 class SpaceTimeRouter:
-    def __init__(self, zones: Dict[str, Zone], connections: List[Connection]) -> None:
+    def __init__(
+        self,
+        zones: Dict[str, Zone],
+        connections: List[Connection]
+    ) -> None:
         self.zones = zones
         self.connections = connections
 
@@ -31,7 +35,8 @@ class SpaceTimeRouter:
 
             if not path:
                 raise ValueError(
-                    f"Impossible de trouver un itinéraire pour le drone {drone_id}. Bloqué par les contraintes de trafic."
+                    "Impossible de trouver un itinéraire pour le "
+                    f"drone {drone_id}. Bloqué par les contraintes de trafic."
                 )
 
             all_paths[drone_id] = path
@@ -78,7 +83,10 @@ class SpaceTimeRouter:
                 if neighbor.zone_type == ZoneType.BLOCKED:
                     continue
 
-                travel_cost = 2 if neighbor.zone_type == ZoneType.RESTRICTED else 1
+                travel_cost = (
+                    2 if neighbor.zone_type == ZoneType.RESTRICTED
+                    else 1
+                )
                 arrival_tour = tour + travel_cost
 
                 is_zone_free = (neighbor.name == end.name) or (
@@ -107,7 +115,8 @@ class SpaceTimeRouter:
         return None
 
     def _reserve_path(self, path: List[Tuple[str, int]]) -> None:
-        """Enregistre le chemin pour que les drones suivants adaptent leur trajectoire"""
+        """Enregistre le chemin pour que les
+        drones suivants adaptent leur trajectoire"""
         for i, (zone_name, tour) in enumerate(path):
             if (zone_name, tour) not in self.occupied_zones:
                 self.occupied_zones[(zone_name, tour)] = 0
@@ -117,7 +126,10 @@ class SpaceTimeRouter:
                 next_zone_name, _ = path[i + 1]
                 if zone_name != next_zone_name:
                     sorted_nodes = sorted([zone_name, next_zone_name])
-                    link_key: Tuple[str, str] = (sorted_nodes[0], sorted_nodes[1])
+                    link_key: Tuple[str, str] = (
+                        sorted_nodes[0],
+                        sorted_nodes[1]
+                    )
 
                     if (link_key, tour) not in self.occupied_links:
                         self.occupied_links[(link_key, tour)] = 0
