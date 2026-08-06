@@ -56,7 +56,10 @@ def run_visualizer(
             bg_image = None
 
     max_turns = (
-        max(tour for path in routes.values() for _, tour in path) if routes else 0
+        max(
+            tour for path in routes.values() for _,
+            tour in path
+        ) if routes else 0
     )
 
     current_turn = 0
@@ -100,7 +103,8 @@ def run_visualizer(
         )
 
         help_str = (
-            "[ESPACE] Mettre en Pause/Lecture | [FLÈCHE DROITE] Forcer le tour suivant"
+            "[ESPACE] Mettre en Pause/Lecture "
+            "| [FLÈCHE DROITE] Forcer le tour suivant"
         )
         help_w = font.size(help_str)[0]
         draw_text_with_shadow(
@@ -120,8 +124,15 @@ def run_visualizer(
                 if tour <= current_turn + 1:
                     pos_next = zone_name
 
-            pt_now = cfg.to_screen_coords(zones[pos_now].x, zones[pos_now].y)
-            pt_next = cfg.to_screen_coords(zones[pos_next].x, zones[pos_next].y)
+            pt_now = cfg.to_screen_coords(
+                zones[pos_now].x,
+                zones[pos_now].y
+            )
+
+            pt_next = cfg.to_screen_coords(
+                zones[pos_next].x,
+                zones[pos_next].y
+            )
 
             interp_x = int(pt_now[0] + (pt_next[0] - pt_now[0]) * progress)
             interp_y = int(pt_now[1] + (pt_next[1] - pt_now[1]) * progress)
@@ -135,8 +146,14 @@ def run_visualizer(
             pt2 = cfg.to_screen_coords(conn.zone2.x, conn.zone2.y)
 
             is_active = any(
-                (link_a[0] == conn.zone1.name and link_a[1] == conn.zone2.name)
-                or (link_a[1] == conn.zone1.name and link_a[0] == conn.zone2.name)
+                (
+                    link_a[0] == conn.zone1.name and
+                    link_a[1] == conn.zone2.name
+                ) or
+                (
+                    link_a[1] == conn.zone1.name and
+                    link_a[0] == conn.zone2.name
+                )
                 for link_a in active_links
             )
 
@@ -147,8 +164,13 @@ def run_visualizer(
             mid_x, mid_y = (pt1[0] + pt2[0]) // 2, (pt1[1] + pt2[1]) // 2
             cap_str = f"cap:{conn.max_link_capacity}"
             cap_w = font.size(cap_str)[0]
+
             draw_text_with_shadow(
-                screen, cap_str, font, TEXT_COLOR, (mid_x + 6 + cap_w // 2, mid_y - 8)
+                screen,
+                cap_str,
+                font,
+                TEXT_COLOR,
+                (mid_x + 6 + cap_w // 2, mid_y - 8)
             )
 
         for zone in zones.values():
