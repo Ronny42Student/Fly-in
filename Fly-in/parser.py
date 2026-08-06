@@ -18,7 +18,10 @@ class Parser:
             return meta_data
 
         meta_str = meta_str.strip("[]")
-        items = re.findall(r"(\w+=\w+|\bzone\s+\w+|\bcolor\s+\w+)", meta_str)
+        items = re.findall(
+            r"(\w+=\w+|\bzone\s+\w+|\bcolor\s+\w+)",
+            meta_str
+            )
         for item in items:
             if "=" in item:
                 key, value = item.split("=")
@@ -37,38 +40,61 @@ class Parser:
                     continue
 
                 try:
-                    if line.startswith("nb drones:") or line.startswith("nb_drones:"):
+                    if (
+                        line.startswith("nb drones:") or
+                        line.startswith("nb_drones:")
+                    ):
                         self.nb_drones = int(line.split(":")[1].strip())
                         if self.nb_drones <= 0:
-                            raise ValueError("Le nombre de drones doit être positif.")
+                            raise ValueError(
+                                "Le nombre de drones doit être positif."
+                            )
                         continue
 
                     hub_match = re.match(
-                        r"^(start_hub|end_hub|hub):\s*([^\s\[\-]+)\s+(-?\d+)\s+(-?\d+)(?:\s+\[(.*)\])?$",
+                        r"^(start_hub|end_hub|hub):"
+                        r"\s*([^\s\[\-]+)\s+(-?\d+)\s"
+                        r"+(-?\d+)(?:\s+\[(.*)\])?$",
                         line,
                     )
                     if hub_match:
-                        prefix, name, x_str, y_str, meta_str = hub_match.groups()
+                        (
+                            prefix,
+                            name,
+                            x_str,
+                            y_str,
+                            meta_str
+                        ) = hub_match.groups()
 
                         if "-" in name:
                             raise ValueError(
-                                f"Le nom '{name}' ne doit pas contenir de tiret."
+                                f"Le nom '{name}' ne doit"
+                                " pas contenir de tiret."
                             )
                         if name in self.zones:
                             raise ValueError(f"Zone en doublon : '{name}'.")
 
-                        meta = self.parse_metadata(meta_str if meta_str else "")
+                        meta = self.parse_metadata(
+                            meta_str if meta_str
+                            else ""
+                        )
                         z_type_str = meta.get("zone", "normal")
                         try:
                             z_type = ZoneType(z_type_str)
                         except ValueError:
-                            raise ValueError(f"Type de zone invalide : '{z_type_str}'.")
+                            raise ValueError("Type de zone invalide"
+                                             f" : '{z_type_str}'.")
 
                         max_drones = int(meta.get("max_drones", 1))
                         color = meta.get("color", None)
 
                         zone = Zone(
-                            name, int(x_str), int(y_str), z_type, max_drones, color
+                            name,
+                            int(x_str),
+                            int(y_str),
+                            z_type,
+                            max_drones,
+                            color
                         )
                         self.zones[name] = zone
 
@@ -84,25 +110,36 @@ class Parser:
                         meta_match = re.search(r"\[(.*)\]", rest_part)
                         if meta_match:
                             meta_str = meta_match.group(1)
-                            rest_part = re.sub(r"\[.*\]", "", rest_part).strip()
+                            rest_part = (
+                                re.sub(r"\[.*\]", "", rest_part).strip()
+                            )
 
                         if "-" not in rest_part:
-                            raise ValueError(f"Format de connexion invalide : '{line}'")
+                            raise ValueError("Format de connexion"
+                                             f" invalide : '{line}'")
 
                         z1_name, z2_name = rest_part.split("-", 1)
                         z1_name = z1_name.strip()
                         z2_name = z2_name.strip()
 
-                        if z1_name not in self.zones or z2_name not in self.zones:
-                            raise ValueError(f"Zone manquante : {z1_name} ou {z2_name}")
+                        if (
+                            z1_name not in self.zones or
+                            z2_name not in self.zones
+                        ):
+                            raise ValueError("Zone manquante "
+                                             f": {z1_name} ou {z2_name}")
 
                         for existing_conn in self.connections:
-                            if {existing_conn.zone1.name, existing_conn.zone2.name} == {
+                            if {
+                                existing_conn.zone1.name,
+                                existing_conn.zone2.name
+                            } == {
                                 z1_name,
                                 z2_name,
                             }:
                                 raise ValueError(
-                                    f"Connexion en doublon : {z1_name}-{z2_name}"
+                                    "Connexion en doublon :"
+                                    f" {z1_name}-{z2_name}"
                                 )
 
                         meta = self.parse_metadata(meta_str)
@@ -121,5 +158,6 @@ class Parser:
 
         if not self.start_zone or not self.end_zone:
             raise ValueError(
-                "La carte doit spécifier un 'start_hub:' et un 'end_hub:' valide."
+                "La carte doit spécifier un "
+                "'start_hub:' et un 'end_hub:' valide."
             )
