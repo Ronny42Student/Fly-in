@@ -6,7 +6,8 @@ from models import Zone
 
 
 class WindowConfig:
-    """Calcule et stocke la configuration de la fenêtre pygame selon la carte."""
+    """Calcule et stocke la configuration
+    de la fenêtre pygame selon la carte."""
 
     MIN_SPACING: int = 200
     PADDING_H: int = 300
@@ -39,13 +40,16 @@ class WindowConfig:
         self.draw_h: int = self.height - self.draw_margin_y - 40
 
     def _compute_size(self) -> Tuple[int, int]:
-        """Calcule la taille optimale de la fenêtre selon la dispersion des zones.
+        """Calcule la taille optimale de
+        la fenêtre selon la dispersion des zones.
 
         Returns:
             Tuple (width, height) en pixels.
         """
         raw_w = self.range_x * self.MIN_SPACING + self.PADDING_H
-        raw_h = self.range_y * self.MIN_SPACING + self.PADDING_V + self.HEADER_H
+        raw_h = (
+            self.range_y * self.MIN_SPACING + self.PADDING_V + self.HEADER_H
+        )
 
         info = pygame.display.Info()
         max_w = max(self.MIN_WIDTH, info.current_w - 80)
