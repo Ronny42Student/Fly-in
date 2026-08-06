@@ -1,5 +1,6 @@
 NAME = fly-in
 PYTHON = python3
+FILE = main.py models.py parser.py router.py visualizer.py window_config.py design/design_pattern.py design/__init__.py
 
 all: $(NAME)
 
@@ -19,12 +20,12 @@ debug:
 	$(PYTHON) -m pdb main.py $(ARGS)
 
 lint:
-	flake8 .
-	mypy --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs .
+	flake8 $(FILE)
+	mypy --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs $(FILE)
 
 lint-strict:
-	flake8 .
-	mypy --strict .
+	flake8 $(FILE)
+	mypy --strict $(FILE)
 
 test: all
 	@chmod +x run_tests.sh
@@ -32,10 +33,12 @@ test: all
 
 clean:
 	@rm -rf __pycache__ */__pycache__ .mypy_cache temp_output.log
+	@echo "rm -rf __pycache__ */__pycache__ .mypy_cache temp_output.log"
 	@echo "[+] Fichiers de cache supprimés."
 
 fclean: clean
 	@rm -f $(NAME)
+	@echo "rm -f $(NAME)"
 	@echo "[+] Exécutable $(NAME) supprimé."
 
 re: fclean all
