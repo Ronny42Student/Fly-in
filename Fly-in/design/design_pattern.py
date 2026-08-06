@@ -1,5 +1,5 @@
 import os
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 import pygame
 
@@ -26,8 +26,8 @@ def draw_text_with_shadow(
     screen: pygame.Surface,
     text: str,
     font: pygame.font.Font,
-    color: Tuple[int, int, int],
-    center: Tuple[int, int],
+    color: tuple[int, int, int],
+    center: tuple[int, int],
 ) -> None:
     """Dessine un texte avec ombre portée pour lisibilité sur fond photo.
 
@@ -38,7 +38,7 @@ def draw_text_with_shadow(
         color: Couleur du texte principal.
         center: Position centrale (x, y) en pixels.
     """
-    shadow_color: Tuple[int, int, int] = (220, 230, 255)
+    shadow_color: tuple[int, int, int] = (220, 230, 255)
     shadow_surf = font.render(text, True, shadow_color)
     shadow_rect = shadow_surf.get_rect(center=(center[0] + 1, center[1] + 1))
     screen.blit(shadow_surf, shadow_rect)
@@ -51,7 +51,7 @@ def draw_text_with_shadow(
 DRONE_IMAGE_PATH = "assets/drone.png"
 DRONE_IMAGE_SIZE = 100
 
-_drone_image_cache: Dict[int, Optional[pygame.Surface]] = {}
+_drone_image_cache: dict[int, Optional[pygame.Surface]] = {}
 
 
 def _load_drone_image(size: int) -> Optional[pygame.Surface]:
@@ -81,8 +81,8 @@ def _load_drone_image(size: int) -> Optional[pygame.Surface]:
 
 def draw_drone_icon(
     screen: pygame.Surface,
-    center: Tuple[int, int],
-    color: Tuple[int, int, int],
+    center: tuple[int, int],
+    color: tuple[int, int, int],
     drone_id: str,
     font: pygame.font.Font,
 ) -> None:
@@ -107,8 +107,8 @@ def draw_drone_icon(
         screen.blit(img, rect)
     else:
         size = 14
-        arm_color: Tuple[int, int, int] = (240, 245, 255)
-        arm_shadow: Tuple[int, int, int] = (10, 20, 60)
+        arm_color: tuple[int, int, int] = (240, 245, 255)
+        arm_shadow: tuple[int, int, int] = (10, 20, 60)
 
         for offset in range(2, 0, -1):
             pygame.draw.line(
@@ -133,8 +133,8 @@ def draw_drone_icon(
             screen, arm_color, (x - size, y + size), (x + size, y - size), 3
         )
 
-        motor_fill: Tuple[int, int, int] = (200, 210, 230)
-        motor_border: Tuple[int, int, int] = (10, 20, 60)
+        motor_fill: tuple[int, int, int] = (200, 210, 230)
+        motor_border: tuple[int, int, int] = (10, 20, 60)
         motor_positions = [
             (-size, -size), (size, -size), (-size, size), (size, size)
         ]
