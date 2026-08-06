@@ -8,7 +8,10 @@ from typing import List
 
 def main() -> None:
     if len(sys.argv) < 2:
-        print("Usage: ./fly-in <chemin_de_la_carte.txt> [--visual]", file=sys.stderr)
+        print(
+            "Usage: ./fly-in <chemin_de_la_carte.txt> [--visual]",
+            file=sys.stderr
+        )
         sys.exit(1)
 
     use_visualizer = "--visual" in sys.argv
@@ -20,7 +23,10 @@ def main() -> None:
             break
 
     if not map_path:
-        print("Erreur : Veuillez spécifier un fichier de carte.", file=sys.stderr)
+        print(
+            "Erreur : Veuillez spécifier un fichier de carte.",
+            file=sys.stderr
+        )
         sys.exit(1)
 
     p = Parser()
@@ -32,7 +38,8 @@ def main() -> None:
 
     if p.start_zone is None or p.end_zone is None:
         print(
-            "Erreur : La zone de départ ou d'arrivée n'est pas définie dans la carte.",
+            "Erreur : La zone de départ ou "
+            "d'arrivée n'est pas définie dans la carte.",
             file=sys.stderr,
         )
         sys.exit(1)
