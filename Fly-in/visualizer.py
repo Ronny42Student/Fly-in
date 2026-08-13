@@ -179,7 +179,8 @@ def run_visualizer(
 
             if zone.color:
                 try:
-                    base_color = pygame.Color(zone.color)
+                    c = pygame.Color(zone.color)
+                    base_color = (c.r, c.g, c.b)
                 except ValueError:
                     pass
 
