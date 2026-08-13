@@ -173,16 +173,15 @@ def run_visualizer(
                 (mid_x + 6 + cap_w // 2, mid_y - 8)
             )
 
-            for zone in zones.values():
-                pos = cfg.to_screen_coords(zone.x, zone.y)
-                base_color = TYPE_COLORS.get(zone.zone_type, (140, 140, 140))
+        for zone in zones.values():
+            pos = cfg.to_screen_coords(zone.x, zone.y)
+            base_color = TYPE_COLORS.get(zone.zone_type, (140, 140, 140))
 
-                if zone.color:
-                    try:
-                        c = pygame.Color(zone.color)
-                        base_color = (c.r, c.g, c.b)
-                    except ValueError:
-                        pass
+            if zone.color:
+                try:
+                    base_color = pygame.Color(zone.color)
+                except ValueError:
+                    pass
 
             pygame.draw.circle(screen, base_color, pos, 22)
             pygame.draw.circle(screen, (255, 255, 255), pos, 22, 2)
