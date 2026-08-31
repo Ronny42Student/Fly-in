@@ -9,7 +9,7 @@ all: $(NAME)
 
 $(NAME):
 	@echo "#!/bin/bash" > $(NAME)
-	@echo "$(PYTHON) main.py \"\$$@\"" >> $(NAME)
+	@echo "$(BIN_VENV)/$(PYTHON) main.py \"\$$@\"" >> $(NAME)
 	@chmod +x $(NAME)
 	@echo "[+] Script de lancement '$(NAME)' créé avec succès."
 
@@ -17,19 +17,19 @@ install:
 	$(PYTHON) -m venv $(VENV)
 	$(BIN_VENV)/$(PYTHON) -m pip install pygame flake8 mypy
 
-run:
+run: all
 	./$(NAME) $(DEFAULT_MAP) --visual
 
 debug:
-	$(PYTHON) -m pdb main.py $(DEFAULT_MAP)
+	$(BIN_VENV)/$(PYTHON) -m pdb main.py $(DEFAULT_MAP)
 
 lint:
-	flake8 $(FILE)
-	mypy --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs $(FILE)
+	$(BIN_VENV)/$(PYTHON) -m flake8 $(FILE)
+	$(BIN_VENV)/$(PYTHON) -m mypy --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs $(FILE)
 
 lint-strict:
-	flake8 $(FILE)
-	mypy --strict $(FILE)
+	$(BIN_VENV)/$(PYTHON) -m flake8 $(FILE)
+	$(BIN_VENV)/$(PYTHON) -m mypy --strict $(FILE)
 
 test: all
 	@chmod +x run_tests.sh
@@ -41,9 +41,11 @@ clean:
 	@echo "[+] Fichiers de cache supprimés."
 
 fclean: clean
+	@rm -rf $(VENV)
 	@rm -f $(NAME)
+	@echo "rm -rf $(VENV)"
 	@echo "rm -f $(NAME)"
-	@echo "[+] Exécutable $(NAME) supprimé."
+	@echo "[+] Environnement virtuel et exécutable $(NAME) supprimés."
 
 re: fclean all
 
