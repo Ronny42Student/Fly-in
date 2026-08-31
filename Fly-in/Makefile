@@ -1,6 +1,8 @@
 NAME = fly-in
 PYTHON = python3
 FILE = main.py models.py parser.py router.py visualizer.py window_config.py design/design_pattern.py design/__init__.py
+VENV = venv
+BIN_VENV = $(VENV)/bin
 
 all: $(NAME)
 
@@ -11,7 +13,8 @@ $(NAME):
 	@echo "[+] Script de lancement '$(NAME)' créé avec succès."
 
 install:
-	$(PYTHON) -m pip install pygame flake8 mypy
+	$(PYTHON) -m venv $(VENV)
+	$(BIN_VENV)/$(PYTHON) -m pip install pygame flake8 mypy
 
 run:
 	$(PYTHON) main.py $(ARGS)
