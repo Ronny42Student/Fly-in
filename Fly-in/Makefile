@@ -3,6 +3,7 @@ PYTHON = python3
 FILE = main.py models.py parser.py router.py visualizer.py window_config.py design/design_pattern.py design/__init__.py
 VENV = venv
 BIN_VENV = $(VENV)/bin
+DEFAULT_MAP = maps/01_linear_path.txt
 
 all: $(NAME)
 
@@ -17,10 +18,10 @@ install:
 	$(BIN_VENV)/$(PYTHON) -m pip install pygame flake8 mypy
 
 run:
-	$(PYTHON) main.py $(ARGS)
+	./$(NAME) $(DEFAULT_MAP) --visual
 
 debug:
-	$(PYTHON) -m pdb main.py $(ARGS)
+	$(PYTHON) -m pdb main.py $(DEFAULT_MAP)
 
 lint:
 	flake8 $(FILE)
@@ -35,8 +36,8 @@ test: all
 	@./run_tests.sh
 
 clean:
-	@rm -rf __pycache__ */__pycache__ .mypy_cache temp_output.log
-	@echo "rm -rf __pycache__ */__pycache__ .mypy_cache temp_output.log"
+	@rm -rf __pycache__ */__pycache__ .mypy_cache temp_output.log fly-in
+	@echo "rm -rf __pycache__ */__pycache__ .mypy_cache temp_output.log fly-in"
 	@echo "[+] Fichiers de cache supprimés."
 
 fclean: clean
