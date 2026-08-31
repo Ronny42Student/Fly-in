@@ -20,3 +20,30 @@ Etape 2:
 Etape 3:
     Initialiser une fenêtre pygame, dessiner les zones sous forme de cercles (en utilisant leurs coordonnées (x, y))
     adaptées à la taille de l'écran et tracer des lignes pour les connexions entre les zones.
+
+--------------------------------------------------------------------------------------------------------------------
+Nom de l'algorythme:
+--> dijkstra avec expansion en space-time (time-expanded graph search)
+--> résolu drone par drone en séquentiel (stratégie prioritized planning)
+
+-dans router.py:
+** heapq = file de priorité -> dijkstra pur (puisqu'il n'y a pas de fonction h()) / A* sans heuristique
+** l'état exploré n'est pas juste (zone) mais (zone, tour) --> chaque noeud du graphe est dupliqué à travers le temps,
+                                                                c'est ce qu'on appelle un graphe "espace-temps" (space-time graph)
+                                                                la téchnique standard pour le "multi-agent pathfinding" (MAPF)
+** 'compute_all_routes' --> boucle sur chaque drone un par un
+    réserve son chemin (_reserve_path), puis calcule le suivant en tenant compte des réservations précedentes
+    c'est la stratégie "prioritized planning"(cooperative pathfinding), une simplification classique du MAPF
+
+-------------------------------------------------------------------------------------------------------------------
+Pourquoi cet algorithme est efficace (et ses limites)
+
+--> dijkstra classique O((v + e) log v)
+    - v = nombre de zones
+    - e = nombre de connexions
+    - Ici v et e sont multipliés par l'horizon temporel T(le nombre de tours explorés)
+    - O((V·T + E·T) log(V·T)) par drone
+    - O(N · (V·T + E·T) log(V·T)) pour drones
+
+complexité
+O(N · (V·T + E·T) log(V·T))
