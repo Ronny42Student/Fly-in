@@ -24,7 +24,7 @@ run_test() {
         return
     fi
 
-    ./fly-in "${MAPS_DIR}/${map_name}" > temp_output.log 2>&1
+    ./fly-in "${MAPS_DIR}/${map_name}" --visual > temp_output.log 2>&1
 
     if [ $? -eq 0 ]; then
         local turns=$(cat temp_output.log | wc -l)
