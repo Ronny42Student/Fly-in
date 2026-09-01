@@ -22,6 +22,34 @@ TYPE_COLORS = {
 }
 
 
+def draw_text_with_shadow_vertical(
+    screen: pygame.Surface,
+    text: str,
+    font: pygame.font.Font,
+    color: tuple[int, int, int],
+    center: tuple[int, int],
+) -> None:
+    """Dessine un texte avec ombre portée pour lisibilité sur fond photo.
+
+    Args:
+        screen: Surface pygame cible.
+        text: Texte à afficher.
+        font: Police pygame.
+        color: Couleur du texte principal.
+        center: Position centrale (x, y) en pixels.
+    """
+    shadow_color: tuple[int, int, int] = (220, 230, 255)
+    shadow_surf = font.render(text, True, shadow_color)
+    shadow_surf = pygame.transform.rotate(shadow_surf, 90)
+    shadow_rect = shadow_surf.get_rect(center=(center[0] + 1, center[1] + 1))
+    screen.blit(shadow_surf, shadow_rect)
+
+    text_surf = font.render(text, True, color)
+    text_surf = pygame.transform.rotate(text_surf, 90)
+    text_rect = text_surf.get_rect(center=center)
+    screen.blit(text_surf, text_rect)
+
+
 def draw_text_with_shadow(
     screen: pygame.Surface,
     text: str,
@@ -146,4 +174,9 @@ def draw_drone_icon(
         pygame.draw.circle(screen, color, (x, y), 8)
         pygame.draw.circle(screen, (255, 255, 255), (x, y), 8, 1)
 
-    draw_text_with_shadow(screen, drone_id[1:], font, (0, 0, 0), (x, y))
+    draw_text_with_shadow_vertical(
+        screen, drone_id[1:],
+        font,
+        (0, 0, 0),
+        (x, y)
+    )

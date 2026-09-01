@@ -56,11 +56,16 @@ class SpaceTimeRouter:
 
         visited: Set[Tuple[str, int]] = set()
 
+        max_tour = len(self.zones) * 10 + 50
+
         while queue:
             cost, tour, curr_name, path = heapq.heappop(queue)
 
             if curr_name == end.name:
                 return path
+
+            if tour > max_tour:
+                continue
 
             if (curr_name, tour) in visited:
                 continue
@@ -69,9 +74,12 @@ class SpaceTimeRouter:
             next_tour = tour + 1
             curr_zone = self.zones[curr_name]
 
-            if curr_name in (start.name, end.name) or (
-                self.occupied_zones.get((curr_name, next_tour), 0)
-                < curr_zone.max_drones
+            if next_tour <= max_tour and (
+                curr_name in (start.name, end.name) or
+                (
+                    self.occupied_zones.get((curr_name, next_tour), 0)
+                    < curr_zone.max_drones
+                )
             ):
                 heapq.heappush(
                     queue,
@@ -91,6 +99,9 @@ class SpaceTimeRouter:
                 travel_cost = 2 if is_restricted else 1
                 priority_bonus = neighbor.priority_bonus
                 arrival_tour = tour + travel_cost
+
+                if arrival_tour > max_tour:
+                    continue
 
                 is_zone_free = (neighbor.name == end.name) or (
                     self.occupied_zones.get((neighbor.name, arrival_tour), 0)

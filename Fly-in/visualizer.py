@@ -13,6 +13,7 @@ from design.design_pattern import (
     TEXT_COLOR,
     TYPE_COLORS,
     draw_drone_icon,
+    draw_text_with_shadow_vertical,
     draw_text_with_shadow,
 )
 from models import Connection, Zone
@@ -108,7 +109,7 @@ def run_visualizer(
             title_w = title_font.size(title_str)[0]
             draw_text_with_shadow(
                 screen, title_str, title_font, TEXT_COLOR,
-                (40 + title_w // 2, 36)
+                (1400 + title_w // 2, 36)
             )
 
             help_str = (
@@ -117,7 +118,7 @@ def run_visualizer(
             )
             help_w = font.size(help_str)[0]
             draw_text_with_shadow(
-                screen, help_str, font, TEXT_COLOR, (40 + help_w // 2, 66)
+                screen, help_str, font, TEXT_COLOR, (1400 + help_w // 2, 66)
             )
 
             current_drone_positions: Dict[str, Tuple[int, int]] = {}
@@ -176,7 +177,7 @@ def run_visualizer(
                 cap_str = f"cap:{conn.max_link_capacity}"
                 cap_w = font.size(cap_str)[0]
 
-                draw_text_with_shadow(
+                draw_text_with_shadow_vertical(
                     screen, cap_str, font, TEXT_COLOR,
                     (mid_x + 6 + cap_w // 2, mid_y - 8)
                 )
@@ -196,7 +197,7 @@ def run_visualizer(
                 pygame.draw.circle(screen, (255, 255, 255), pos, 22, 2)
 
                 info_str = f"{zone.name} [max:{zone.max_drones}]"
-                draw_text_with_shadow(
+                draw_text_with_shadow_vertical(
                     screen, info_str, font, TEXT_COLOR, (pos[0], pos[1] - 36)
                 )
 

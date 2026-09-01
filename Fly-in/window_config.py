@@ -9,13 +9,13 @@ class WindowConfig:
     """Calcule et stocke la configuration
     de la fenêtre pygame selon la carte."""
 
-    MIN_SPACING: int = 200
-    PADDING_H: int = 300
-    PADDING_V: int = 300
+    MIN_SPACING: int = 300
+    PADDING_H: int = 100
+    PADDING_V: int = 100
     HEADER_H: int = 150
-    DRAW_MARGIN_X: int = 110
-    MIN_WIDTH: int = 1000
-    MIN_HEIGHT: int = 800
+    DRAW_MARGIN_X: int = 50
+    MIN_WIDTH: int = 1920
+    MIN_HEIGHT: int = 1000
 
     def __init__(self, zones: Dict[str, Zone]) -> None:
         """Initialise la config depuis les zones de la carte.
