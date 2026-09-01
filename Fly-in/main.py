@@ -3,7 +3,7 @@ import sys
 from parser import Parser
 from router import SpaceTimeRouter
 from visualizer import run_visualizer
-from typing import List
+from typing import Dict, List
 
 
 def main() -> None:
@@ -47,20 +47,40 @@ def main() -> None:
     router = SpaceTimeRouter(p.zones, p.connections)
     routes = router.compute_all_routes(p.nb_drones, p.start_zone, p.end_zone)
 
-    max_turns = max(tour for path in routes.values() for _, tour in path)
+    max_turns = max(
+        tour for path in routes.values() for _, tour, _ in path
+    )
 
     for t in range(1, max_turns + 1):
         turn_actions: List[str] = []
         for drone_id, path in routes.items():
-            for zone_name, tour in path:
-                if tour == t:
-                    turn_actions.append(f"D{drone_id[1:]}-{zone_name}")
-                    break
+            for label, tour, is_conn in path:
+                if tour != t:
+                    continue
+
+                prev_label = _label_at(path, t - 1)
+                if not is_conn and label == prev_label:
+                    continue
+
+                turn_actions.append(f"D{drone_id[1:]}-{label}")
+                break
         if turn_actions:
             print(" ".join(turn_actions))
 
     if use_visualizer:
         run_visualizer(p.zones, p.connections, routes)
+
+
+def _label_at(path: List, turn: int) -> str:
+    """Retourne le label (zone ou connexion) où se trouve le drone
+    à un tour donné, ou chaîne vide si non trouvé."""
+    result = ""
+    for label, tour, _is_conn in path:
+        if tour <= turn:
+            result = label
+        else:
+            break
+    return result
 
 
 if __name__ == "__main__":

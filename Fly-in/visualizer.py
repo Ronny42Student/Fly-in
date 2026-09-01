@@ -18,19 +18,20 @@ from design.design_pattern import (
 from models import Connection, Zone
 from window_config import WindowConfig
 
+PathStep = Tuple[str, int, bool]
+
+
+def _zone_steps(path: List[PathStep]) -> List[Tuple[str, int]]:
+    """Extrait uniquement les étapes de type zone (ignore le transit)."""
+    return [(label, tour) for label, tour, is_conn in path if not is_conn]
+
 
 def run_visualizer(
     zones: Dict[str, Zone],
     connections: List[Connection],
-    routes: Dict[str, List[Tuple[str, int]]],
+    routes: Dict[str, List[PathStep]],
 ) -> None:
-    """Lance le visualiseur pygame de la simulation drone.
-
-    Args:
-        zones: Dictionnaire des zones de la carte.
-        connections: Liste des connexions entre zones.
-        routes: Dictionnaire des chemins calculés par drone.
-    """
+    """Lance le visualiseur pygame de la simulation drone."""
     pygame.init()
 
     if not zones:
@@ -55,11 +56,14 @@ def run_visualizer(
             print(f"Avertissement : impossible de charger le background ({e})")
             bg_image = None
 
+    zone_routes: Dict[str, List[Tuple[str, int]]] = {
+        drone_id: _zone_steps(path) for drone_id, path in routes.items()
+    }
+
     max_turns = (
         max(
-            tour for path in routes.values() for _,
-            tour in path
-        ) if routes else 0
+            tour for path in zone_routes.values() for _, tour in path
+        ) if zone_routes else 0
     )
 
     current_turn = 0
@@ -67,143 +71,146 @@ def run_visualizer(
     progress = 0.0
     animation_speed = 0.025
 
-    while True:
-        clock.tick(60)
+    try:
+        while True:
+            clock.tick(60)
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    is_paused = not is_paused
-                elif event.key == pygame.K_RIGHT or event.key == pygame.K_p:
-                    if current_turn < max_turns:
-                        current_turn += 1
-                        progress = 0.0
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        is_paused = not is_paused
+                    elif event.key == pygame.K_RIGHT or event.key == pygame.K_p:
+                        if current_turn < max_turns:
+                            current_turn += 1
+                            progress = 0.0
 
-        if not is_paused and current_turn < max_turns:
-            progress += animation_speed
-            if progress >= 1.0:
-                progress = 0.0
-                current_turn += 1
-        elif current_turn >= max_turns:
-            progress = 1.0
+            if not is_paused and current_turn < max_turns:
+                progress += animation_speed
+                if progress >= 1.0:
+                    progress = 0.0
+                    current_turn += 1
+            elif current_turn >= max_turns:
+                progress = 1.0
 
-        if bg_image is not None:
-            screen.blit(bg_image, (0, 0))
-        else:
-            screen.fill(BG_COLOR)
+            if bg_image is not None:
+                screen.blit(bg_image, (0, 0))
+            else:
+                screen.fill(BG_COLOR)
 
-        status_str = "PAUSE" if is_paused else "SIMULATION EN COURS"
-        title_str = f"Tour : {current_turn} / {max_turns}  ({status_str})"
-        title_w = title_font.size(title_str)[0]
-        draw_text_with_shadow(
-            screen, title_str, title_font, TEXT_COLOR, (40 + title_w // 2, 36)
-        )
-
-        help_str = (
-            "[ESPACE] Mettre en Pause/Lecture "
-            "| [FLÈCHE DROITE] Forcer le tour suivant"
-        )
-        help_w = font.size(help_str)[0]
-        draw_text_with_shadow(
-            screen, help_str, font, TEXT_COLOR, (40 + help_w // 2, 66)
-        )
-
-        current_drone_positions: Dict[str, Tuple[int, int]] = {}
-        active_links: List[Tuple[str, str]] = []
-
-        for drone_id, path in routes.items():
-            pos_now = path[0][0]
-            pos_next = path[0][0]
-
-            for zone_name, tour in path:
-                if tour <= current_turn:
-                    pos_now = zone_name
-                if tour <= current_turn + 1:
-                    pos_next = zone_name
-
-            pt_now = cfg.to_screen_coords(
-                zones[pos_now].x,
-                zones[pos_now].y
+            status_str = "PAUSE" if is_paused else "SIMULATION EN COURS"
+            title_str = f"Tour : {current_turn} / {max_turns}  ({status_str})"
+            title_w = title_font.size(title_str)[0]
+            draw_text_with_shadow(
+                screen, title_str, title_font, TEXT_COLOR,
+                (40 + title_w // 2, 36)
             )
 
-            pt_next = cfg.to_screen_coords(
-                zones[pos_next].x,
-                zones[pos_next].y
+            help_str = (
+                "[ESPACE] Mettre en Pause/Lecture "
+                "| [FLÈCHE DROITE] Forcer le tour suivant"
+            )
+            help_w = font.size(help_str)[0]
+            draw_text_with_shadow(
+                screen, help_str, font, TEXT_COLOR, (40 + help_w // 2, 66)
             )
 
-            interp_x = int(pt_now[0] + (pt_next[0] - pt_now[0]) * progress)
-            interp_y = int(pt_now[1] + (pt_next[1] - pt_now[1]) * progress)
-            current_drone_positions[drone_id] = (interp_x, interp_y)
+            current_drone_positions: Dict[str, Tuple[int, int]] = {}
+            active_links: List[Tuple[str, str]] = []
 
-            if pos_now != pos_next:
-                active_links.append((pos_now, pos_next))
+            for drone_id, path in zone_routes.items():
+                pos_now = path[0][0]
+                pos_next = path[0][0]
 
-        for conn in connections:
-            pt1 = cfg.to_screen_coords(conn.zone1.x, conn.zone1.y)
-            pt2 = cfg.to_screen_coords(conn.zone2.x, conn.zone2.y)
+                for zone_name, tour in path:
+                    if tour <= current_turn:
+                        pos_now = zone_name
+                    if tour <= current_turn + 1:
+                        pos_next = zone_name
 
-            is_active = any(
-                (
-                    link_a[0] == conn.zone1.name and
-                    link_a[1] == conn.zone2.name
-                ) or
-                (
-                    link_a[1] == conn.zone1.name and
-                    link_a[0] == conn.zone2.name
+                pt_now = cfg.to_screen_coords(
+                    zones[pos_now].x, zones[pos_now].y
                 )
-                for link_a in active_links
-            )
+                pt_next = cfg.to_screen_coords(
+                    zones[pos_next].x, zones[pos_next].y
+                )
 
-            color = ACTIVE_LINE_COLOR if is_active else LINE_COLOR
-            width_line = 3 if is_active else 1
-            pygame.draw.line(screen, color, pt1, pt2, width_line)
+                interp_x = int(
+                    pt_now[0] + (pt_next[0] - pt_now[0]) * progress
+                )
+                interp_y = int(
+                    pt_now[1] + (pt_next[1] - pt_now[1]) * progress
+                )
+                current_drone_positions[drone_id] = (interp_x, interp_y)
 
-            mid_x, mid_y = (pt1[0] + pt2[0]) // 2, (pt1[1] + pt2[1]) // 2
-            cap_str = f"cap:{conn.max_link_capacity}"
-            cap_w = font.size(cap_str)[0]
+                if pos_now != pos_next:
+                    active_links.append((pos_now, pos_next))
 
-            draw_text_with_shadow(
-                screen,
-                cap_str,
-                font,
-                TEXT_COLOR,
-                (mid_x + 6 + cap_w // 2, mid_y - 8)
-            )
+            for conn in connections:
+                pt1 = cfg.to_screen_coords(conn.zone1.x, conn.zone1.y)
+                pt2 = cfg.to_screen_coords(conn.zone2.x, conn.zone2.y)
 
-        for zone in zones.values():
-            pos = cfg.to_screen_coords(zone.x, zone.y)
-            base_color = TYPE_COLORS.get(zone.zone_type, (140, 140, 140))
-
-            if zone.color:
-                try:
-                    c = pygame.Color(zone.color)
-                    base_color = (c.r, c.g, c.b)
-                except ValueError:
-                    pass
-
-            pygame.draw.circle(screen, base_color, pos, 22)
-            pygame.draw.circle(screen, (255, 255, 255), pos, 22, 2)
-
-            info_str = f"{zone.name} [max:{zone.max_drones}]"
-            draw_text_with_shadow(
-                screen, info_str, font, TEXT_COLOR, (pos[0], pos[1] - 36)
-            )
-
-        drones_at_same_node: Dict[Tuple[int, int], int] = {}
-        for drone_id, pos in current_drone_positions.items():
-            if progress == 0.0 or progress >= 0.98:
-                count = drones_at_same_node.get(pos, 0)
-                drones_at_same_node[pos] = count + 1
-                if count > 0:
-                    angle = count * (2 * math.pi / 4)
-                    pos = (
-                        int(pos[0] + math.cos(angle) * 15),
-                        int(pos[1] + math.sin(angle) * 15),
+                is_active = any(
+                    (
+                        link_a[0] == conn.zone1.name and
+                        link_a[1] == conn.zone2.name
+                    ) or
+                    (
+                        link_a[1] == conn.zone1.name and
+                        link_a[0] == conn.zone2.name
                     )
+                    for link_a in active_links
+                )
 
-            draw_drone_icon(screen, pos, DRONE_COLOR, drone_id, font)
+                color = ACTIVE_LINE_COLOR if is_active else LINE_COLOR
+                width_line = 3 if is_active else 1
+                pygame.draw.line(screen, color, pt1, pt2, width_line)
 
-        pygame.display.flip()
+                mid_x = (pt1[0] + pt2[0]) // 2
+                mid_y = (pt1[1] + pt2[1]) // 2
+                cap_str = f"cap:{conn.max_link_capacity}"
+                cap_w = font.size(cap_str)[0]
+
+                draw_text_with_shadow(
+                    screen, cap_str, font, TEXT_COLOR,
+                    (mid_x + 6 + cap_w // 2, mid_y - 8)
+                )
+
+            for zone in zones.values():
+                pos = cfg.to_screen_coords(zone.x, zone.y)
+                base_color = TYPE_COLORS.get(zone.zone_type, (140, 140, 140))
+
+                if zone.color:
+                    try:
+                        c = pygame.Color(zone.color)
+                        base_color = (c.r, c.g, c.b)
+                    except ValueError:
+                        pass
+
+                pygame.draw.circle(screen, base_color, pos, 22)
+                pygame.draw.circle(screen, (255, 255, 255), pos, 22, 2)
+
+                info_str = f"{zone.name} [max:{zone.max_drones}]"
+                draw_text_with_shadow(
+                    screen, info_str, font, TEXT_COLOR, (pos[0], pos[1] - 36)
+                )
+
+            drones_at_same_node: Dict[Tuple[int, int], int] = {}
+            for drone_id, pos in current_drone_positions.items():
+                if progress == 0.0 or progress >= 0.98:
+                    count = drones_at_same_node.get(pos, 0)
+                    drones_at_same_node[pos] = count + 1
+                    if count > 0:
+                        angle = count * (2 * math.pi / 4)
+                        pos = (
+                            int(pos[0] + math.cos(angle) * 15),
+                            int(pos[1] + math.sin(angle) * 15),
+                        )
+
+                draw_drone_icon(screen, pos, DRONE_COLOR, drone_id, font)
+
+            pygame.display.flip()
+    finally:
+        pygame.quit()

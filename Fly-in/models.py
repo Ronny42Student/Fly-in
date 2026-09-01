@@ -33,6 +33,15 @@ class Zone:
             return 2
         return 1
 
+    @property
+    def priority_bonus(self) -> int:
+        """Petit bonus négatif pour favoriser les zones priority
+        à coût égal dans le tri de la priority queue."""
+        return -1 if self.zone_type == ZoneType.PRIORITY else 0
+
+    def is_full(self, count: int) -> bool:
+        return count >= self.max_drones
+
 
 class Connection:
     def __init__(
@@ -45,3 +54,16 @@ class Connection:
         self.zone2: Zone = zone2
         self.max_link_capacity: int = max_link_capacity
         self.drones_in_transit: Dict[str, int] = {}
+
+    @property
+    def key(self) -> tuple[str, str]:
+        """Clé canonique (triée) identifiant la connexion,
+        indépendamment du sens de parcours."""
+        names = sorted([self.zone1.name, self.zone2.name])
+        return (names[0], names[1])
+
+    def other(self, zone_name: str) -> Zone:
+        """Retourne l'autre extrémité de la connexion."""
+        if self.zone1.name == zone_name:
+            return self.zone2
+        return self.zone1

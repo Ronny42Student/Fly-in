@@ -4,6 +4,9 @@ from typing import Dict, List, Optional, Set, Tuple
 from models import Connection, Zone, ZoneType
 
 
+PathStep = Tuple[str, int, bool]
+
+
 class SpaceTimeRouter:
     def __init__(
         self,
@@ -25,9 +28,9 @@ class SpaceTimeRouter:
 
     def compute_all_routes(
         self, nb_drones: int, start: Zone, end: Zone
-    ) -> Dict[str, List[Tuple[str, int]]]:
-        """Calcule l'itinéraire optimal pour chaque drone l'un après l'autre"""
-        all_paths: Dict[str, List[Tuple[str, int]]] = {}
+    ) -> Dict[str, List[PathStep]]:
+        """Calcule l'itinéraire optimal pour chaque drone l'un après l'autre."""
+        all_paths: Dict[str, List[PathStep]] = {}
 
         for i in range(1, nb_drones + 1):
             drone_id = f"d{i}"
@@ -46,9 +49,9 @@ class SpaceTimeRouter:
 
     def _find_path_for_drone(
         self, start: Zone, end: Zone
-    ) -> Optional[List[Tuple[str, int]]]:
-        queue: List[Tuple[int, int, str, List[Tuple[str, int]]]] = []
-        heapq.heappush(queue, (0, 0, start.name, [(start.name, 0)]))
+    ) -> Optional[List[PathStep]]:
+        queue: List[Tuple[int, int, str, List[PathStep]]] = []
+        heapq.heappush(queue, (0, 0, start.name, [(start.name, 0, False)]))
 
         visited: Set[Tuple[str, int]] = set()
 
@@ -75,7 +78,7 @@ class SpaceTimeRouter:
                         cost + 1,
                         next_tour,
                         curr_name,
-                        path + [(curr_name, next_tour)],
+                        path + [(curr_name, next_tour, False)],
                     ),
                 )
 
@@ -83,10 +86,9 @@ class SpaceTimeRouter:
                 if neighbor.zone_type == ZoneType.BLOCKED:
                     continue
 
-                travel_cost = (
-                    2 if neighbor.zone_type == ZoneType.RESTRICTED
-                    else 1
-                )
+                is_restricted = neighbor.zone_type == ZoneType.RESTRICTED
+                travel_cost = 2 if is_restricted else 1
+                priority_bonus = neighbor.priority_bonus
                 arrival_tour = tour + travel_cost
 
                 is_zone_free = (neighbor.name == end.name) or (
@@ -94,43 +96,63 @@ class SpaceTimeRouter:
                     < neighbor.max_drones
                 )
 
-                sorted_nodes = sorted([curr_name, neighbor.name])
-                link_key: Tuple[str, str] = (sorted_nodes[0], sorted_nodes[1])
+                link_key = conn.key
 
-                is_link_free = (
-                    self.occupied_links.get((link_key, tour), 0)
-                    < conn.max_link_capacity
-                )
+                if is_restricted:
+                    link_free_depart = (
+                        self.occupied_links.get((link_key, tour), 0)
+                        < conn.max_link_capacity
+                    )
+                    link_free_transit = (
+                        self.occupied_links.get((link_key, tour + 1), 0)
+                        < conn.max_link_capacity
+                    )
+                    is_link_free = link_free_depart and link_free_transit
+                else:
+                    is_link_free = (
+                        self.occupied_links.get((link_key, tour), 0)
+                        < conn.max_link_capacity
+                    )
 
                 if is_zone_free and is_link_free:
+                    new_path = list(path)
+                    if is_restricted:
+                        conn_label = f"{link_key[0]}_{link_key[1]}"
+                        new_path.append((conn_label, tour + 1, True))
+                    new_path.append((neighbor.name, arrival_tour, False))
+
                     heapq.heappush(
                         queue,
                         (
-                            cost + travel_cost,
+                            cost + travel_cost + priority_bonus,
                             arrival_tour,
                             neighbor.name,
-                            path + [(neighbor.name, arrival_tour)],
+                            new_path,
                         ),
                     )
         return None
 
-    def _reserve_path(self, path: List[Tuple[str, int]]) -> None:
-        """Enregistre le chemin pour que les
-        drones suivants adaptent leur trajectoire"""
-        for i, (zone_name, tour) in enumerate(path):
-            if (zone_name, tour) not in self.occupied_zones:
-                self.occupied_zones[(zone_name, tour)] = 0
-            self.occupied_zones[(zone_name, tour)] += 1
+    def _reserve_path(self, path: List[PathStep]) -> None:
+        """Enregistre le chemin (zones et connexions en transit) pour
+        que les drones suivants adaptent leur trajectoire."""
+        zone_steps = [(label, tour) for label, tour, is_conn in path if not is_conn]
 
-            if i < len(path) - 1:
-                next_zone_name, _ = path[i + 1]
-                if zone_name != next_zone_name:
-                    sorted_nodes = sorted([zone_name, next_zone_name])
-                    link_key: Tuple[str, str] = (
-                        sorted_nodes[0],
-                        sorted_nodes[1]
-                    )
+        for zone_name, tour in zone_steps:
+            key = (zone_name, tour)
+            self.occupied_zones[key] = self.occupied_zones.get(key, 0) + 1
 
-                    if (link_key, tour) not in self.occupied_links:
-                        self.occupied_links[(link_key, tour)] = 0
-                    self.occupied_links[(link_key, tour)] += 1
+        for i, (zone_name, tour) in enumerate(zone_steps[:-1]):
+            next_zone_name, next_tour = zone_steps[i + 1]
+            if zone_name == next_zone_name:
+                continue
+
+            sorted_nodes = sorted([zone_name, next_zone_name])
+            link_key: Tuple[str, str] = (sorted_nodes[0], sorted_nodes[1])
+
+            if next_tour - tour == 2:
+                for t in (tour, tour + 1):
+                    lk = (link_key, t)
+                    self.occupied_links[lk] = self.occupied_links.get(lk, 0) + 1
+            else:
+                lk = (link_key, tour)
+                self.occupied_links[lk] = self.occupied_links.get(lk, 0) + 1
