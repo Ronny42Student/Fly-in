@@ -29,7 +29,8 @@ class SpaceTimeRouter:
     def compute_all_routes(
         self, nb_drones: int, start: Zone, end: Zone
     ) -> Dict[str, List[PathStep]]:
-        """Calcule l'itinéraire optimal pour chaque drone l'un après l'autre."""
+        """Calcule l'itinéraire optimal
+        pour chaque drone l'un après l'autre."""
         all_paths: Dict[str, List[PathStep]] = {}
 
         for i in range(1, nb_drones + 1):
@@ -135,7 +136,11 @@ class SpaceTimeRouter:
     def _reserve_path(self, path: List[PathStep]) -> None:
         """Enregistre le chemin (zones et connexions en transit) pour
         que les drones suivants adaptent leur trajectoire."""
-        zone_steps = [(label, tour) for label, tour, is_conn in path if not is_conn]
+        zone_steps = [
+            (label, tour)
+            for label, tour, is_conn in path
+            if not is_conn
+        ]
 
         for zone_name, tour in zone_steps:
             key = (zone_name, tour)
@@ -152,7 +157,9 @@ class SpaceTimeRouter:
             if next_tour - tour == 2:
                 for t in (tour, tour + 1):
                     lk = (link_key, t)
-                    self.occupied_links[lk] = self.occupied_links.get(lk, 0) + 1
+                    self.occupied_links[lk] = (
+                        self.occupied_links.get(lk, 0) + 1
+                    )
             else:
                 lk = (link_key, tour)
                 self.occupied_links[lk] = self.occupied_links.get(lk, 0) + 1

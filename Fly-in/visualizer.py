@@ -82,7 +82,10 @@ def run_visualizer(
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
                         is_paused = not is_paused
-                    elif event.key == pygame.K_RIGHT or event.key == pygame.K_p:
+                    elif (
+                        event.key == pygame.K_RIGHT or
+                        event.key == pygame.K_p
+                    ):
                         if current_turn < max_turns:
                             current_turn += 1
                             progress = 0.0

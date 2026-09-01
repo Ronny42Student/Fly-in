@@ -3,7 +3,8 @@ import sys
 from parser import Parser
 from router import SpaceTimeRouter
 from visualizer import run_visualizer
-from typing import Dict, List
+from typing import List
+from router import PathStep
 
 
 def main() -> None:
@@ -71,7 +72,7 @@ def main() -> None:
         run_visualizer(p.zones, p.connections, routes)
 
 
-def _label_at(path: List, turn: int) -> str:
+def _label_at(path: List[PathStep], turn: int) -> str:
     """Retourne le label (zone ou connexion) où se trouve le drone
     à un tour donné, ou chaîne vide si non trouvé."""
     result = ""
