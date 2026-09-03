@@ -1,9 +1,15 @@
 import os
-from typing import Optional
+from typing import Optional, List, Tuple
+import math
 
 import pygame
 
 from models import ZoneType
+
+RAINBOW_COLORS = [
+    (255, 0, 0), (255, 127, 0), (255, 255, 0),
+    (0, 255, 0), (0, 0, 255), (75, 0, 130), (148, 0, 211),
+]
 
 BG_COLOR = (135, 170, 210)
 
@@ -180,3 +186,29 @@ def draw_drone_icon(
         (0, 0, 0),
         (x, y)
     )
+
+
+def draw_rainbow_circle(
+    screen: pygame.Surface,
+    center: tuple[int, int],
+    radius: int,
+) -> None:
+    """Dessine un cercle en dégradé arc-en-ciel (secteurs colorés)."""
+    x, y = center
+    n = len(RAINBOW_COLORS)
+    for i, color in enumerate(RAINBOW_COLORS):
+        start_angle = (2 * math.pi / n) * i
+        end_angle = (2 * math.pi / n) * (i + 1)
+        points: List[Tuple[int, int]] = [(x, y)]
+        steps = 10
+        for s in range(steps + 1):
+            angle = start_angle + (end_angle - start_angle) * s / steps
+
+            points.append(
+                (
+                    int(x + radius * math.cos(angle)),
+                    int(y + radius * math.sin(angle))
+                )
+            )
+
+        pygame.draw.polygon(screen, color, points)

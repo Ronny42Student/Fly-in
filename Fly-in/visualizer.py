@@ -15,6 +15,7 @@ from design.design_pattern import (
     draw_drone_icon,
     draw_text_with_shadow_vertical,
     draw_text_with_shadow,
+    draw_rainbow_circle,
 )
 from models import Connection, Zone
 from window_config import WindowConfig
@@ -186,7 +187,10 @@ def run_visualizer(
                 pos = cfg.to_screen_coords(zone.x, zone.y)
                 base_color = TYPE_COLORS.get(zone.zone_type, (140, 140, 140))
 
-                if zone.color:
+                if zone.color == "rainbow":
+                    draw_rainbow_circle(screen, pos, 22)
+
+                elif zone.color:
                     try:
                         c = pygame.Color(zone.color)
                         base_color = (c.r, c.g, c.b)

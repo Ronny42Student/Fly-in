@@ -1,4 +1,5 @@
 import re
+import pygame
 from typing import Dict, List, Optional
 
 from models import Connection, Zone, ZoneType
@@ -30,13 +31,27 @@ class Parser:
                 key, _, value = token.partition("=")
                 if not key or not value:
                     raise ValueError(f"Métadonnée invalide : '{token}'")
+                if key in meta_data:
+                    raise ValueError(
+                        f"Métadonnée en doublon : '{key}'"
+                    )
+
                 meta_data[key.strip()] = value.strip()
                 i += 1
+
             elif token.lower() in ("zone", "color"):
+                key = token.lower()
+
                 if i + 1 >= len(tokens):
                     raise ValueError(
                         f"Valeur manquante pour la métadonnée '{token}'"
                     )
+
+                if key in meta_data:
+                    raise ValueError(
+                        f"Métadonnée en doublon : '{key}'"
+                    )
+
                 meta_data[token.lower()] = tokens[i + 1]
                 i += 2
             else:
@@ -97,8 +112,31 @@ class Parser:
                             raise ValueError("Type de zone invalide"
                                              f" : '{z_type_str}'.")
 
-                        max_drones = int(meta.get("max_drones", 1))
+                        max_drones_str = meta.get("max_drones", "1")
+                        if (
+                            not max_drones_str.isdigit() or
+                            int(max_drones_str) <= 0
+                        ):
+                            raise ValueError(
+                                f"max_drones invalide : '{max_drones_str}' "
+                                "(doit être un entier positif)"
+                            )
+
+                        max_drones = int(max_drones_str)
+
+                        KNOW_SPECIAL_COLORS = {"rainbow"}
+
                         color = meta.get("color", None)
+                        if (
+                            color is not None and
+                            color not in KNOW_SPECIAL_COLORS
+                        ):
+                            try:
+                                pygame.Color(color)
+                            except ValueError:
+                                raise ValueError(
+                                    f"Couleur invalide : '{color}'"
+                                )
 
                         zone = Zone(
                             name,
@@ -155,8 +193,17 @@ class Parser:
                                 )
 
                         meta = self.parse_metadata(meta_str)
-                        max_link = int(meta.get("max_link_capacity", 1))
-
+                        max_link_str = meta.get("max_link_capacity", "1")
+                        if (
+                            not max_link_str.isdigit() or
+                            int(max_link_str) <= 0
+                        ):
+                            raise ValueError(
+                                "max_link_capacity invalide :"
+                                f" '{max_link_str}' "
+                                "(doit être un entier positif)"
+                            )
+                        max_link = int(max_link_str)
                         conn = Connection(
                             self.zones[z1_name], self.zones[z2_name], max_link
                         )
