@@ -18,7 +18,10 @@ class Parser:
         if not meta_str:
             return meta_data
 
-        meta_str = meta_str.strip("[]").strip()
+        meta_str = meta_str.strip()
+        if meta_str.startswith("[") and meta_str.endswith("]"):
+            meta_str = meta_str[1:-1].strip()
+
         if not meta_str:
             return meta_data
 
@@ -80,7 +83,7 @@ class Parser:
                     hub_match = re.match(
                         r"^(start_hub|end_hub|hub):"
                         r"\s*([^\s\[\-]+)\s+(-?\d+)\s"
-                        r"+(-?\d+)(?:\s+\[(.*)\])?$",
+                        r"+(-?\d+)(?:\s+\[([a-zA-Z0-9_=\s]+)\])?$",
                         line,
                     )
                     if hub_match:
