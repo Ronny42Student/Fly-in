@@ -68,7 +68,6 @@ class Parser:
 
                 try:
                     if (
-                        line.startswith("nb drones:") or
                         line.startswith("nb_drones:")
                     ):
                         self.nb_drones = int(line.split(":")[1].strip())
