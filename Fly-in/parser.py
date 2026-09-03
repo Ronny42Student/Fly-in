@@ -17,19 +17,31 @@ class Parser:
         if not meta_str:
             return meta_data
 
-        meta_str = meta_str.strip("[]")
-        items = re.findall(
-            r"(\w+=\w+|\bzone\s+\w+|\bcolor\s+\w+)",
-            meta_str
-            )
-        for item in items:
-            if "=" in item:
-                key, value = item.split("=")
+        meta_str = meta_str.strip("[]").strip()
+        if not meta_str:
+            return meta_data
+
+        tokens = meta_str.split()
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+
+            if "=" in token:
+                key, _, value = token.partition("=")
+                if not key or not value:
+                    raise ValueError(f"Métadonnée invalide : '{token}'")
                 meta_data[key.strip()] = value.strip()
-            elif item.lower().startswith("zone"):
-                meta_data["zone"] = item.split()[1]
-            elif item.lower().startswith("color"):
-                meta_data["color"] = item.split()[1]
+                i += 1
+            elif token.lower() in ("zone", "color"):
+                if i + 1 >= len(tokens):
+                    raise ValueError(
+                        f"Valeur manquante pour la métadonnée '{token}'"
+                    )
+                meta_data[token.lower()] = tokens[i + 1]
+                i += 2
+            else:
+                raise ValueError(f"Métadonnée non reconnue : '{token}'")
+
         return meta_data
 
     def parse_file(self, file_path: str) -> None:
