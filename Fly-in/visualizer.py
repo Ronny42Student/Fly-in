@@ -190,10 +190,12 @@ def run_visualizer(
                     try:
                         c = pygame.Color(zone.color)
                         base_color = (c.r, c.g, c.b)
+                        pygame.draw.circle(screen, base_color, pos, 22)
                     except ValueError:
-                        pass
+                        raise ValueError(f"Couleur invalide : '{zone.color}'")
+                else:
+                    pass
 
-                pygame.draw.circle(screen, base_color, pos, 22)
                 pygame.draw.circle(screen, (255, 255, 255), pos, 22, 2)
 
                 info_str = f"{zone.name} [max:{zone.max_drones}]"
