@@ -59,7 +59,10 @@ The whole project is implemented from scratch, without any graph library
 
 ## Features
 
-- Custom line-based parser with clear, line-numbered error messages.
+- Custom line-based parser with clear, line-numbered error messages, and
+  strict metadata validation (unknown keys, duplicate keys, malformed
+  `key=value` pairs, nested brackets, non-positive capacities, and unknown
+  color names are all rejected rather than silently ignored).
 - Four zone types (`normal`, `blocked`, `restricted`, `priority`), each with its
   own movement rules.
 - Per-zone drone capacity (`max_drones`) and per-connection traffic capacity
@@ -468,9 +471,42 @@ decomposed with a single regular expression, explained in full below.
 ### `Parser.parse_metadata` — Reading `[key=value ...]` Blocks
 
 Turns a metadata string such as `zone=restricted color=red` into a dictionary
-`{"zone": "restricted", "color": "red"}`, using a regular expression to find
-every `key=value` pair regardless of their order in the brackets — matching
-the subject's rule that "tags inside brackets can appear in any order."
+`{"zone": "restricted", "color": "red"}` — matching the subject's rule that
+"tags inside brackets can appear in any order."
+
+Unlike a permissive regex-based extractor, this parser is **strict by
+design**: rather than silently ignoring anything that doesn't look like a
+valid tag, every token inside the brackets is explicitly validated, and any
+anomaly stops parsing with a clear, line-numbered error. Specifically, it
+rejects:
+
+- **Unknown keys** — only `zone`, `color`, `max_drones`, and
+  `max_link_capacity` are recognized. A typo such as `xcolor=green` is
+  rejected rather than silently ignored, since the subject requires "any
+  other parsing error" to stop the program with a clear message (VII.4).
+- **Duplicate keys within the same block** — `[zone=restricted
+  zone=blocked]` or `[color=blue color=white]` raises an error instead of
+  silently keeping the last value, since a repeated key in the same bracket
+  is inherently ambiguous.
+- **Malformed `key=value` pairs** — a token like `=value` or `key=` (empty
+  key or value) is rejected.
+- **Nested or unbalanced brackets** — a block such as `[[color=red]]` is
+  rejected rather than being silently unwrapped.
+- **Non-positive or non-integer capacity values** — `max_drones` and
+  `max_link_capacity` must be strictly positive integers, per the subject's
+  explicit requirement ("Capacity values ... must be positive integers,"
+  VII.4). A value like `max_drones=0` or `max_link_capacity=salut` is
+  rejected with a dedicated error message.
+- **Unknown color names** — every `color` value (except the special
+  `rainbow` value used for the Challenger map's goal zone, rendered as a
+  multicolor gradient) is validated against `pygame.Color`'s recognized color
+  names at parse time, so a typo like `color=rainbou` fails immediately
+  instead of only surfacing later when `--visual` is used.
+
+This trades a small amount of leniency for predictability: a malformed map
+fails fast, at the exact line responsible, with a message describing exactly
+what was wrong — rather than silently accepting a typo and producing a
+subtly incorrect simulation.
 
 ### Regex Crash Course (for the Patterns Used in `parser.py`)
 
@@ -489,29 +525,33 @@ the subject's rule that "tags inside brackets can appear in any order."
 | `\b` | a word boundary (the edge between a word character and a non-word one) |
 | `\|` | "or" |
 
-**Pattern 1 — extracting metadata pairs**
+**Metadata tokenization — no longer regex-based**
+
+An earlier version of this parser extracted `key=value` pairs using a single
+regular expression with `re.findall`:
 
 ```python
 r"(\w+=\w+|\bzone\s+\w+|\bcolor\s+\w+)"
 ```
 
-Read as three alternatives joined by `|`:
-1. `\w+=\w+` → a word, an `=`, a word — matches `zone=restricted`,
-   `color=red`, `max_drones=2`.
-2. `\bzone\s+\w+` → the whole word "zone," then whitespace, then a word (no
-   `=`) — extra tolerance for a space-separated variant.
-3. `\bcolor\s+\w+` → the same idea for "color."
+That approach was replaced. `findall` silently *skips* any substring that
+doesn't match one of its alternatives, which meant a typo or an unrecognized
+tag (e.g. `xcolor=green`, or a stray token like `xx`) would simply disappear
+from the metadata without ever raising an error — exactly the kind of "clear
+error message indicating the line and cause" the subject requires (VII.4)
+was missing. It also could not detect duplicate keys, malformed pairs, or
+nested brackets, since it only ever looked for fragments that *did* match,
+never flagged what didn't.
 
-```text
-Input:  "zone=restricted color=red"
-Output: ["zone=restricted", "color=red"]
-```
+`parse_metadata` now works by splitting the bracket's contents on whitespace
+and validating each token explicitly — checking for a recognized key, a
+non-empty value, no duplicate keys, and no leftover brackets — rather than
+relying on a regex to opportunistically find valid-looking fragments
+anywhere in the string. The two remaining regexes in the file — extracting a
+zone-declaration line's fields, and locating a connection's `[...]` block —
+are unchanged and still described below.
 
-Only the first alternative is ever exercised by the map format described in
-the subject — the other two exist purely as extra tolerance for a variant
-that never actually appears in the official examples.
-
-**Pattern 2 — parsing a zone-declaration line**
+**Pattern 1 — parsing a zone-declaration line**
 
 ```python
 r"^(start_hub|end_hub|hub):\s*([^\s\[\-]+)\s+(-?\d+)\s+(-?\d+)(?:\s+\[(.*)\])?$"
@@ -540,7 +580,7 @@ such as `.` or `'`. `[^\s\[\-]+` matches that constraint exactly as written.
 When the `[...]` block is absent, group 5 is simply `None` — handled in the
 code with `meta_str if meta_str else ""`.
 
-**Pattern 3 — extracting a connection's metadata block**
+**Pattern 2 — extracting a connection's metadata block**
 
 ```python
 re.search(r"\[(.*)\]", rest_part)
@@ -555,11 +595,14 @@ leaving only the plain `zone1-zone2` behind.
 > **Regex gotcha — greedy vs. lazy.** `.*` is *greedy*: it grabs as much text
 > as it possibly can. On an input like `[a] text [b]`, `\[(.*)\]` would
 > actually capture `a] text [b` — from the *first* `[` all the way to the
-> *last* `]`, not just `a`. This never causes a problem in this project (each
-> line has at most one bracket pair), but it is the single most common regex
-> mistake to watch for. The fix, if ever needed, is the *lazy* quantifier
-> `.*?` (note the extra `?`), which stops at the first `]` it finds instead of
-> the last.
+> *last* `]`, not just `a`. This never causes a problem for well-formed
+> single-bracket lines, but it is exactly why `[[color=red]]` (nested
+> brackets) reaches `parse_metadata` still containing a leftover `[` and `]`
+> instead of being cleanly unwrapped by the regex alone — which is precisely
+> the case `parse_metadata`'s own bracket check is there to catch. The fix
+> for genuinely wanting the *first* bracket pair only, if ever needed, is the
+> *lazy* quantifier `.*?` (note the extra `?`), which stops at the first `]`
+> it finds instead of the last.
 
 ### `SpaceTimeRouter.__init__` — Building the Adjacency List
 
@@ -629,6 +672,8 @@ What it shows, and why it helps:
   `restricted` = orange, `priority` = green by default, or a custom color
   from the map file), each labeled with its name and maximum capacity — so a
   capacity bottleneck is visible before it even happens in the simulation.
+  The special `rainbow` color (used on the Challenger map's goal zone) is
+  rendered as a multicolor gradient circle rather than a single flat color.
 - **Connections are drawn as lines**, labeled with their traffic capacity;
   a connection currently being crossed is highlighted (thicker, bright
   yellow) versus an idle one (thin, dark) — making it easy to spot exactly
@@ -692,10 +737,18 @@ specific tasks:
   space-time graph model, the Dijkstra search loop, the Big-O complexity
   derivation, and the reasoning behind `heapq`'s `O(log n)` push/pop cost.
 - **Explaining the regular expressions** used in `parser.py`, token by token.
+- **Hardening `parser.py`'s metadata validation** — identifying and fixing a
+  series of parsing edge cases (unknown metadata keys silently ignored,
+  duplicate keys within the same bracket, non-positive capacity values,
+  nested brackets, and invalid color names) that the original implementation
+  did not reject, in line with the subject's requirement that any invalid
+  input produce a clear, line-numbered error rather than being silently
+  accepted.
 
 This assistance was used strictly as a learning aid — to understand
-*already-written* code and to help structure documentation — not to generate
-new application logic. This section should be reviewed and extended by
+*already-written* code, to identify and reason through edge cases in
+existing logic, and to help structure documentation — not to generate new
+application logic wholesale. This section should be reviewed and extended by
 nrajaoar to reflect the complete, accurate picture of any AI assistance used
 across the whole project, in line with the transparency expectations set out
 in the subject's AI Instructions chapter (Chapter II).
