@@ -4,6 +4,15 @@ from typing import Dict, List, Optional
 
 from models import Connection, Zone, ZoneType
 
+KNOWN_SPECIAL_COLORS = {"rainbow"}
+
+KNOWN_METADATA_KEYS = {
+    "zone",
+    "color",
+    "max_drones",
+    "max_link_capacity"
+}
+
 
 class Parser:
     def __init__(self) -> None:
@@ -18,10 +27,12 @@ class Parser:
         if not meta_str:
             return meta_data
 
-        meta_str = meta_str.strip()
-        if meta_str.startswith("[") and meta_str.endswith("]"):
-            meta_str = meta_str[1:-1].strip()
+        if "[" in meta_str or "]" in meta_str:
+            raise ValueError(
+                f"Crochets imbriqués non autorisés : '{meta_str}'"
+            )
 
+        meta_str = meta_str.strip()
         if not meta_str:
             return meta_data
 
@@ -34,28 +45,22 @@ class Parser:
                 key, _, value = token.partition("=")
                 if not key or not value:
                     raise ValueError(f"Métadonnée invalide : '{token}'")
+                if key not in KNOWN_METADATA_KEYS:
+                    raise ValueError(f"Métadonnée non reconnue : '{key}'")
                 if key in meta_data:
-                    raise ValueError(
-                        f"Métadonnée en doublon : '{key}'"
-                    )
-
+                    raise ValueError(f"Métadonnée en doublon : '{key}'")
                 meta_data[key.strip()] = value.strip()
                 i += 1
 
             elif token.lower() in ("zone", "color"):
                 key = token.lower()
-
                 if i + 1 >= len(tokens):
                     raise ValueError(
                         f"Valeur manquante pour la métadonnée '{token}'"
                     )
-
                 if key in meta_data:
-                    raise ValueError(
-                        f"Métadonnée en doublon : '{key}'"
-                    )
-
-                meta_data[token.lower()] = tokens[i + 1]
+                    raise ValueError(f"Métadonnée en doublon : '{key}'")
+                meta_data[key] = tokens[i + 1]
                 i += 2
             else:
                 raise ValueError(f"Métadonnée non reconnue : '{token}'")
@@ -83,7 +88,7 @@ class Parser:
                     hub_match = re.match(
                         r"^(start_hub|end_hub|hub):"
                         r"\s*([^\s\[\-]+)\s+(-?\d+)\s"
-                        r"+(-?\d+)(?:\s+\[([a-zA-Z0-9_=\s]+)\])?$",
+                        r"+(-?\d+)(?:\s+\[(.*)\])?$",
                         line,
                     )
                     if hub_match:
@@ -126,12 +131,10 @@ class Parser:
 
                         max_drones = int(max_drones_str)
 
-                        KNOW_SPECIAL_COLORS = {"rainbow"}
-
                         color = meta.get("color", None)
                         if (
                             color is not None and
-                            color not in KNOW_SPECIAL_COLORS
+                            color not in KNOWN_SPECIAL_COLORS
                         ):
                             try:
                                 pygame.Color(color)
