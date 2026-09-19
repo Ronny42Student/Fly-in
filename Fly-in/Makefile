@@ -16,6 +16,7 @@ $(NAME):
 install:
 	$(PYTHON) -m venv $(VENV)
 	$(BIN_VENV)/$(PYTHON) -m pip install pygame flake8 mypy
+	$(BIN_VENV)/$(PYTHON) -m pip install --upgrade pip
 
 run: all
 	./$(NAME) $(DEFAULT_MAP) --visual
