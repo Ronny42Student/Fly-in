@@ -10,8 +10,9 @@ from design.design_pattern import (
     BG_COLOR,
     DRONE_COLOR,
     LINE_COLOR,
+    RAINBOW_KEYWORD,
     TEXT_COLOR,
-    TYPE_COLORS,
+    color_to_rgb,
     draw_drone_icon,
     draw_text_with_shadow_vertical,
     draw_text_with_shadow,
@@ -23,27 +24,32 @@ from window_config import WindowConfig
 PathStep = Tuple[str, int, bool]
 
 
-def _zone_base_color(zone: Zone) -> Tuple[int, int, int]:
-    """Détermine la couleur de remplissage d'une zone.
+def _resolve_zone_colors(
+    zones: Dict[str, Zone],
+) -> Dict[str, Tuple[int, int, int]]:
+    """Convertit les couleurs des zones en RGB, avant d'ouvrir la fenêtre.
 
-    Le sujet autorise n'importe quel nom de couleur mono-mot : si pygame ne
-    connaît pas celui du fichier, on retombe sur la couleur du type de zone
-    au lieu de faire planter la fenêtre.
+    Les zones sans couleur (ou 'rainbow') n'ont pas d'entrée : elles ne sont
+    pas remplies (transparentes) ou dessinées à part.
 
     Args:
-        zone: Zone à colorer.
+        zones: Zones de la carte.
 
     Returns:
-        Tuple RGB.
+        Dictionnaire nom de zone -> couleur RGB.
+
+    Raises:
+        ValueError: Si une zone porte une couleur inconnue.
     """
-    default = TYPE_COLORS.get(zone.zone_type, (140, 140, 140))
-    if zone.color is None or zone.color == "rainbow":
-        return default
-    try:
-        c = pygame.Color(zone.color)
-    except (ValueError, TypeError):
-        return default
-    return (c.r, c.g, c.b)
+    resolved: Dict[str, Tuple[int, int, int]] = {}
+    for zone in zones.values():
+        if zone.color is None or zone.color == RAINBOW_KEYWORD:
+            continue
+        try:
+            resolved[zone.name] = color_to_rgb(zone.color)
+        except ValueError as e:
+            raise ValueError(f"Zone '{zone.name}' : {e}") from e
+    return resolved
 
 
 def _zone_steps(path: List[PathStep]) -> List[Tuple[str, int]]:
@@ -63,6 +69,8 @@ def run_visualizer(
         print("Aucune zone à afficher.")
         return
 
+    zone_colors = _resolve_zone_colors(zones)
+
     cfg = WindowConfig(zones)
     screen = pygame.display.set_mode((cfg.width, cfg.height))
     pygame.display.set_caption("Fly-in: Advanced Space-Time Visualizer")
@@ -80,10 +88,6 @@ def run_visualizer(
         except pygame.error as e:
             print(f"Avertissement : impossible de charger le background ({e})")
             bg_image = None
-
-    zone_colors: Dict[str, Tuple[int, int, int]] = {
-        z.name: _zone_base_color(z) for z in zones.values()
-    }
 
     zone_routes: Dict[str, List[Tuple[str, int]]] = {
         drone_id: _zone_steps(path) for drone_id, path in routes.items()
@@ -213,9 +217,9 @@ def run_visualizer(
             for zone in zones.values():
                 pos = cfg.to_screen_coords(zone.x, zone.y)
 
-                if zone.color == "rainbow":
+                if zone.color == RAINBOW_KEYWORD:
                     draw_rainbow_circle(screen, pos, 22)
-                else:
+                elif zone.name in zone_colors:
                     pygame.draw.circle(screen, zone_colors[zone.name], pos, 22)
 
                 pygame.draw.circle(screen, (255, 255, 255), pos, 22, 2)

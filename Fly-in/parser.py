@@ -1,6 +1,7 @@
 import re
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
+from design.design_pattern import RAINBOW_KEYWORD, color_to_rgb
 from models import Connection, Zone, ZoneType
 
 HUB_METADATA_KEYS = {"zone", "color", "max_drones"}
@@ -163,6 +164,11 @@ class Parser:
             )
 
         color = meta.get("color")
+        if color is not None and color != RAINBOW_KEYWORD:
+            try:
+                color_to_rgb(color)
+            except ValueError as e:
+                raise ParseError(str(e)) from e
 
         zone = Zone(name, x, y, zone_type, max_drones, color)
         self.zones[name] = zone

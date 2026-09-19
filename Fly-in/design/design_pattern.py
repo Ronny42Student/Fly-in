@@ -11,6 +11,8 @@ RAINBOW_COLORS = [
     (0, 255, 0), (0, 0, 255), (75, 0, 130), (148, 0, 211),
 ]
 
+RAINBOW_KEYWORD = "rainbow"
+
 BG_COLOR = (135, 170, 210)
 
 LINE_COLOR = (10, 20, 60)
@@ -26,6 +28,31 @@ TYPE_COLORS = {
     ZoneType.RESTRICTED: (200, 80, 0),
     ZoneType.PRIORITY: (0, 140, 60),
 }
+
+
+def color_to_rgb(name: str) -> tuple[int, int, int]:
+    """Convertit un nom de couleur du fichier de carte en tuple RGB.
+
+    Source unique de validation des couleurs : le parseur et le visualiseur
+    l'utilisent tous les deux, donc ils s'accordent toujours sur ce qui est
+    valide. Accepte les noms pygame (red, lightblue...) et l'hexadécimal
+    (#ff0000). Le mot-clé 'rainbow' n'est pas une couleur RGB : il doit être
+    traité à part (voir RAINBOW_KEYWORD).
+
+    Args:
+        name: Nom de la couleur tel qu'écrit dans le fichier de carte.
+
+    Returns:
+        Tuple (r, g, b).
+
+    Raises:
+        ValueError: Si la couleur est inconnue de pygame.
+    """
+    try:
+        color = pygame.Color(name)
+    except (ValueError, TypeError):
+        raise ValueError(f"Couleur invalide : '{name}'") from None
+    return (color.r, color.g, color.b)
 
 
 def draw_text_with_shadow_vertical(
