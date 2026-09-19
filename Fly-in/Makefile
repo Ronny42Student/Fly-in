@@ -37,7 +37,7 @@ test: all
 	@./run_tests.sh
 
 clean:
-	@rm -rf __pycache__ */__pycache__ .mypy_cache temp_output.log fly-in
+	@rm -rf __pycache__ */__pycache__ .mypy_cache temp_output.log fly-in .pytest_cache
 	@echo "rm -rf __pycache__ */__pycache__ .mypy_cache temp_output.log fly-in"
 	@echo "[+] Fichiers de cache supprimés."
 
