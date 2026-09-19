@@ -16,6 +16,7 @@ class SpaceTimeRouter:
         self.zones = zones
         self.connections = connections
 
+        self.max_tour: int = len(zones) * 10 + 50
         self.occupied_zones: Dict[Tuple[str, int], int] = {}
         self.occupied_links: Dict[Tuple[Tuple[str, str], int], int] = {}
 
@@ -32,6 +33,7 @@ class SpaceTimeRouter:
         """Calcule l'itinéraire optimal
         pour chaque drone l'un après l'autre."""
         all_paths: Dict[str, List[PathStep]] = {}
+        self.max_tour = len(self.zones) * 10 + 50 + 2 * nb_drones
 
         for i in range(1, nb_drones + 1):
             drone_id = f"d{i}"
@@ -56,7 +58,7 @@ class SpaceTimeRouter:
 
         visited: Set[Tuple[str, int]] = set()
 
-        max_tour = len(self.zones) * 10 + 50
+        max_tour = self.max_tour
 
         while queue:
             cost, tour, curr_name, path = heapq.heappop(queue)

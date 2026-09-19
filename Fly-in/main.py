@@ -1,13 +1,13 @@
 import sys
-
-from parser import Parser
-from router import SpaceTimeRouter
-from visualizer import run_visualizer
 from typing import List
-from router import PathStep
+
+from parser import ParseError, Parser
+from router import PathStep, SpaceTimeRouter
+from visualizer import run_visualizer
 
 
 def main() -> None:
+    """Point d'entrée : parse la carte, calcule les routes, affiche."""
     if len(sys.argv) < 2:
         print(
             "Usage: ./fly-in <chemin_de_la_carte.txt> [--visual]",
@@ -33,7 +33,7 @@ def main() -> None:
     p = Parser()
     try:
         p.parse_file(map_path)
-    except Exception as e:
+    except ParseError as e:
         print(f"Erreur de parsing : {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -46,10 +46,17 @@ def main() -> None:
         sys.exit(1)
 
     router = SpaceTimeRouter(p.zones, p.connections)
-    routes = router.compute_all_routes(p.nb_drones, p.start_zone, p.end_zone)
+    try:
+        routes = router.compute_all_routes(
+            p.nb_drones, p.start_zone, p.end_zone
+        )
+    except ValueError as e:
+        print(f"Erreur de routage : {e}", file=sys.stderr)
+        sys.exit(1)
 
     max_turns = max(
-        tour for path in routes.values() for _, tour, _ in path
+        (tour for path in routes.values() for _, tour, _ in path),
+        default=0,
     )
 
     for t in range(1, max_turns + 1):
@@ -69,7 +76,11 @@ def main() -> None:
             print(" ".join(turn_actions))
 
     if use_visualizer:
-        run_visualizer(p.zones, p.connections, routes)
+        try:
+            run_visualizer(p.zones, p.connections, routes)
+        except Exception as e:
+            print(f"Erreur du visualiseur : {e}", file=sys.stderr)
+            sys.exit(1)
 
 
 def _label_at(path: List[PathStep], turn: int) -> str:

@@ -23,6 +23,29 @@ from window_config import WindowConfig
 PathStep = Tuple[str, int, bool]
 
 
+def _zone_base_color(zone: Zone) -> Tuple[int, int, int]:
+    """Détermine la couleur de remplissage d'une zone.
+
+    Le sujet autorise n'importe quel nom de couleur mono-mot : si pygame ne
+    connaît pas celui du fichier, on retombe sur la couleur du type de zone
+    au lieu de faire planter la fenêtre.
+
+    Args:
+        zone: Zone à colorer.
+
+    Returns:
+        Tuple RGB.
+    """
+    default = TYPE_COLORS.get(zone.zone_type, (140, 140, 140))
+    if zone.color is None or zone.color == "rainbow":
+        return default
+    try:
+        c = pygame.Color(zone.color)
+    except (ValueError, TypeError):
+        return default
+    return (c.r, c.g, c.b)
+
+
 def _zone_steps(path: List[PathStep]) -> List[Tuple[str, int]]:
     """Extrait uniquement les étapes de type zone (ignore le transit)."""
     return [(label, tour) for label, tour, is_conn in path if not is_conn]
@@ -57,6 +80,10 @@ def run_visualizer(
         except pygame.error as e:
             print(f"Avertissement : impossible de charger le background ({e})")
             bg_image = None
+
+    zone_colors: Dict[str, Tuple[int, int, int]] = {
+        z.name: _zone_base_color(z) for z in zones.values()
+    }
 
     zone_routes: Dict[str, List[Tuple[str, int]]] = {
         drone_id: _zone_steps(path) for drone_id, path in routes.items()
@@ -185,20 +212,11 @@ def run_visualizer(
 
             for zone in zones.values():
                 pos = cfg.to_screen_coords(zone.x, zone.y)
-                base_color = TYPE_COLORS.get(zone.zone_type, (140, 140, 140))
 
                 if zone.color == "rainbow":
                     draw_rainbow_circle(screen, pos, 22)
-
-                elif zone.color:
-                    try:
-                        c = pygame.Color(zone.color)
-                        base_color = (c.r, c.g, c.b)
-                        pygame.draw.circle(screen, base_color, pos, 22)
-                    except ValueError:
-                        raise ValueError(f"Couleur invalide : '{zone.color}'")
                 else:
-                    pass
+                    pygame.draw.circle(screen, zone_colors[zone.name], pos, 22)
 
                 pygame.draw.circle(screen, (255, 255, 255), pos, 22, 2)
 
