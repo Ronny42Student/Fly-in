@@ -4,3 +4,4 @@ __pycache__
 temp_output.log
 .mypy_cache
 .pytest_cache
+maps/

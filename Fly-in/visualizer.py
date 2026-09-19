@@ -155,6 +155,7 @@ def run_visualizer(
 
             current_drone_positions: Dict[str, Tuple[int, int]] = {}
             active_links: List[Tuple[str, str]] = []
+            zone_counts = {z: 0 for z in zones}
 
             for drone_id, path in zone_routes.items():
                 pos_now = path[0][0]
@@ -184,6 +185,8 @@ def run_visualizer(
                 if pos_now != pos_next:
                     active_links.append((pos_now, pos_next))
 
+                zone_counts[pos_now] += 1
+
             for conn in connections:
                 pt1 = cfg.to_screen_coords(conn.zone1.x, conn.zone1.y)
                 pt2 = cfg.to_screen_coords(conn.zone2.x, conn.zone2.y)
@@ -206,7 +209,21 @@ def run_visualizer(
 
                 mid_x = (pt1[0] + pt2[0]) // 2
                 mid_y = (pt1[1] + pt2[1]) // 2
-                cap_str = f"cap:{conn.max_link_capacity}"
+
+                nb = sum(
+                    1 for a, b in active_links
+
+                    if (
+                        a == conn.zone1.name and
+                        b == conn.zone2.name
+                    ) or
+                    (
+                        b == conn.zone1.name and
+                        a == conn.zone2.name
+                    )
+                )
+
+                cap_str = f"{nb}/cap:{conn.max_link_capacity}"
                 cap_w = font.size(cap_str)[0]
 
                 draw_text_with_shadow_vertical(
@@ -224,7 +241,12 @@ def run_visualizer(
 
                 pygame.draw.circle(screen, (255, 255, 255), pos, 22, 2)
 
-                info_str = f"{zone.name} [max:{zone.max_drones}]"
+                info_str = (
+                    f"{zone.name} "
+                    f"[{zone_counts[zone.name]}"
+                    f"/max:{zone.max_drones}]"
+                )
+
                 draw_text_with_shadow_vertical(
                     screen, info_str, font, TEXT_COLOR, (pos[0], pos[1] - 36)
                 )

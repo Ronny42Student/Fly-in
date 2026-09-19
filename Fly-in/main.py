@@ -1,5 +1,5 @@
 import sys
-from typing import List
+from typing import List, Dict
 
 from parser import ParseError, Parser
 from router import PathStep, SpaceTimeRouter
@@ -59,9 +59,23 @@ def main() -> None:
         default=0,
     )
 
+    link_caps = {
+        f"{c.key[0]}_{c.key[1]}":
+        c.max_link_capacity for c in p.connections
+    }
+
     for t in range(1, max_turns + 1):
         turn_actions: List[str] = []
+        zone_counts: Dict[str, int] = {z: 0 for z in p.zones}
+        link_counts: Dict[str, int] = {}
+
         for drone_id, path in routes.items():
+            curr_pos = _label_at(path, t)
+            if curr_pos in p.zones:
+                zone_counts[curr_pos] += 1
+            elif curr_pos:
+                link_counts[curr_pos] = link_counts.get(curr_pos, 0) + 1
+
             for label, tour, is_conn in path:
                 if tour != t:
                     continue
@@ -73,6 +87,19 @@ def main() -> None:
                 turn_actions.append(f"D{drone_id[1:]}-{label}")
                 break
         if turn_actions:
+            z_info = " ".join(
+                f"{z}={cnt}/{p.zones[z].max_drones}"
+                for z, cnt in zone_counts.items() if cnt > 0
+            )
+
+            l_info = " ".join(
+                f"{lk}={cnt}/{link_caps.get(lk, 1)}"
+                for lk, cnt in link_counts.items() if cnt > 0
+            )
+            details = f" | {z_info}" if z_info else ""
+            if l_info:
+                details += f" | {l_info}"
+
             print(" ".join(turn_actions))
 
     if use_visualizer:
