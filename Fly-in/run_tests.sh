@@ -46,7 +46,7 @@ run_test "EASY" "03_basic_capacity.txt" "Attendu: < 10 tours"
 
 echo -e "\n${YELLOW}--- 🟡 CATEGORIE: MEDIUM ---${NC}"
 run_test "MEDIUM" "01_dead_end_trap.txt" "Attendu: 10-30 tours"
-run_test "MEDIUM" "02_circular_loop.txt" "Attenov: 10-30 tours"
+run_test "MEDIUM" "02_circular_loop.txt" "Attendu: 10-30 tours"
 run_test "MEDIUM" "03_priority_puzzle.txt" "Attendu: 10-30 tours"
 
 echo -e "\n${RED}--- 🔴 CATEGORIE: HARD ---${NC}"

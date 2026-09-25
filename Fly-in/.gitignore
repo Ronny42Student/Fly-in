@@ -1,7 +1,18 @@
-.env
-venv
-__pycache__
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+.mypy_cache/
+.pytest_cache/
+
+# Virtual environment
+venv/
+
+# Project build/output
+fly-in
 temp_output.log
-.mypy_cache
-.pytest_cache
-maps/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

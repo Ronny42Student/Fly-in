@@ -1,7 +1,9 @@
+"""Line-based parser and validator for the Fly-in map file format."""
+
 import re
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-from design.design_pattern import RAINBOW_KEYWORD, color_to_rgb
+from design.design_pattern import DesignPattern
 from models import Connection, Zone, ZoneType
 
 HUB_METADATA_KEYS = {"zone", "color", "max_drones"}
@@ -16,22 +18,22 @@ _ZONE_NAME_RE = re.compile(r"[^\s\-]+")
 
 
 class ParseError(ValueError):
-    """Erreur de syntaxe ou de validation dans un fichier de carte."""
+    """Syntax or validation error found in a map file."""
 
 
 class Parser:
-    """Analyse un fichier de carte Fly-in et valide sa cohérence.
+    """Parses a Fly-in map file and validates its overall consistency.
 
     Attributes:
-        zones: Zones de la carte, indexées par leur nom.
-        connections: Connexions (bidirectionnelles) entre les zones.
-        nb_drones: Nombre de drones (0 tant que non défini).
-        start_zone: Zone de départ (None tant que non définie).
-        end_zone: Zone d'arrivée (None tant que non définie).
+        zones: Map zones, indexed by name.
+        connections: Bidirectional connections between zones.
+        nb_drones: Number of drones (0 until defined).
+        start_zone: Starting zone (None until defined).
+        end_zone: Destination zone (None until defined).
     """
 
     def __init__(self) -> None:
-        """Initialise un parseur vide."""
+        """Initialize an empty parser."""
         self.zones: Dict[str, Zone] = {}
         self.connections: List[Connection] = []
         self.nb_drones: int = 0
@@ -40,13 +42,14 @@ class Parser:
         self._connection_keys: Set[Tuple[str, str]] = set()
 
     def parse_file(self, file_path: str) -> None:
-        """Lit et valide un fichier de carte.
+        """Read and validate a map file.
 
         Args:
-            file_path: Chemin du fichier de carte.
+            file_path: Path to the map file.
 
         Raises:
-            ParseError: Fichier illisible ou carte invalide.
+            ParseError: If the file cannot be read, or the map is
+                invalid.
         """
         try:
             with open(file_path, "r", encoding="utf-8-sig") as f:
@@ -62,13 +65,14 @@ class Parser:
         self.parse_lines(content.split("\n"))
 
     def parse_lines(self, lines: Iterable[str]) -> None:
-        """Analyse les lignes d'une carte puis valide la carte complète.
+        """Parse a map's lines, then validate the map as a whole.
 
         Args:
-            lines: Lignes du fichier (sans contrainte sur les fins de ligne).
+            lines: The file's lines (no constraint on line endings).
 
         Raises:
-            ParseError: Ligne invalide (avec son numéro) ou carte incohérente.
+            ParseError: If a line is invalid (with its line number), or
+                the map is inconsistent once fully parsed.
         """
         for line_num, raw_line in enumerate(lines, start=1):
             line = raw_line.strip()
@@ -81,7 +85,12 @@ class Parser:
         self._validate_map()
 
     def _parse_line(self, line: str) -> None:
-        """Aiguille une ligne vers le bon traitement selon son mot-clé."""
+        """Route a single line to the right handler based on its
+        keyword.
+
+        Args:
+            line: The stripped, non-empty, non-comment line to parse.
+        """
         keyword, sep, rest = line.partition(":")
         keyword = keyword.strip()
         if not sep:
@@ -111,17 +120,21 @@ class Parser:
             self._parse_hub(keyword, rest)
 
     def _parse_nb_drones(self, value: str) -> None:
-        """Traite 'nb_drones: <entier positif>' (une seule fois)."""
+        """Handle 'nb_drones: <positive integer>' (allowed only once).
+
+        Args:
+            value: Text found after the ':' on the nb_drones line.
+        """
         if self.nb_drones != 0:
             raise ParseError("'nb_drones' est défini plusieurs fois.")
         self.nb_drones = self._parse_positive_int(value.strip(), "nb_drones")
 
     def _parse_hub(self, prefix: str, rest: str) -> None:
-        """Traite une ligne start_hub / end_hub / hub.
+        """Handle a start_hub / end_hub / hub line.
 
         Args:
-            prefix: 'start_hub', 'end_hub' ou 'hub'.
-            rest: Texte situé après les deux-points.
+            prefix: 'start_hub', 'end_hub' or 'hub'.
+            rest: Text found after the ':'.
         """
         is_start = prefix == "start_hub"
         is_end = prefix == "end_hub"
@@ -164,9 +177,9 @@ class Parser:
             )
 
         color = meta.get("color")
-        if color is not None and color != RAINBOW_KEYWORD:
+        if color is not None and color != DesignPattern.RAINBOW_KEYWORD:
             try:
-                color_to_rgb(color)
+                DesignPattern.color_to_rgb(color)
             except ValueError as e:
                 raise ParseError(str(e)) from e
 
@@ -178,7 +191,11 @@ class Parser:
             self.end_zone = zone
 
     def _parse_connection(self, rest: str) -> None:
-        """Traite 'connection: <zone1>-<zone2> [max_link_capacity=N]'."""
+        """Handle 'connection: <zone1>-<zone2> [max_link_capacity=N]'.
+
+        Args:
+            rest: Text found after the ':'.
+        """
         body, meta_str = self._split_metadata(rest)
 
         parts = body.split("-")
@@ -226,18 +243,18 @@ class Parser:
 
     @staticmethod
     def _split_metadata(text: str) -> Tuple[str, str]:
-        """Sépare le corps d'une ligne de son bloc '[...]' éventuel.
+        """Split a line's body from its optional '[...]' metadata block.
 
         Args:
-            text: Texte situé après les deux-points.
+            text: Text found after the ':'.
 
         Returns:
-            Tuple (corps, contenu des crochets). Le contenu est une chaîne
-            vide s'il n'y a pas de bloc de métadonnées.
+            Tuple (body, bracket contents). The contents are an empty
+            string when there is no metadata block.
 
         Raises:
-            ParseError: Crochets manquants, multiples ou imbriqués, ou texte
-                placé après le crochet fermant.
+            ParseError: If brackets are missing, duplicated, nested, or
+                if text follows the closing bracket.
         """
         text = text.strip()
         start = text.find("[")
@@ -264,19 +281,19 @@ class Parser:
     def parse_metadata(
         self, meta_str: str, allowed_keys: Set[str], context: str
     ) -> Dict[str, str]:
-        """Analyse le contenu d'un bloc de métadonnées 'clé=valeur ...'.
+        """Parse the contents of a 'key=value ...' metadata block.
 
         Args:
-            meta_str: Contenu entre crochets (peut être vide).
-            allowed_keys: Clés autorisées pour ce type de ligne.
-            context: Libellé du type de ligne, pour les messages d'erreur.
+            meta_str: Contents between brackets (may be empty).
+            allowed_keys: Keys allowed for this kind of line.
+            context: Label for the kind of line, used in error messages.
 
         Returns:
-            Dictionnaire clé -> valeur (les valeurs restent des chaînes).
+            Dictionary key -> value (values stay as strings).
 
         Raises:
-            ParseError: Clé inconnue, mal placée, en doublon, ou syntaxe
-                invalide.
+            ParseError: If a key is unknown, misplaced, duplicated, or
+                the syntax is otherwise invalid.
         """
         meta: Dict[str, str] = {}
         for token in meta_str.split():
@@ -300,14 +317,17 @@ class Parser:
 
     @staticmethod
     def _parse_positive_int(value: str, label: str) -> int:
-        """Convertit une chaîne en entier strictement positif.
+        """Convert a string into a strictly positive integer.
 
         Args:
-            value: Chaîne à convertir.
-            label: Nom du champ, pour le message d'erreur.
+            value: String to convert.
+            label: Field name, used in the error message.
+
+        Returns:
+            The parsed integer.
 
         Raises:
-            ParseError: La valeur n'est pas un entier strictement positif.
+            ParseError: If the value is not a strictly positive integer.
         """
         if not _POSITIVE_INT_RE.fullmatch(value) or int(value) <= 0:
             raise ParseError(
@@ -318,7 +338,19 @@ class Parser:
 
     @staticmethod
     def _parse_coordinate(value: str, axis: str) -> int:
-        """Convertit une coordonnée en entier (négatif autorisé)."""
+        """Convert a coordinate into an integer (negative values
+        allowed).
+
+        Args:
+            value: String to convert.
+            axis: Axis name ('x' or 'y'), used in the error message.
+
+        Returns:
+            The parsed integer.
+
+        Raises:
+            ParseError: If the value is not a valid integer.
+        """
         if not _INT_RE.fullmatch(value):
             raise ParseError(
                 f"Coordonnée {axis} invalide : '{value}' (entier attendu)."
@@ -327,10 +359,17 @@ class Parser:
 
     @staticmethod
     def _parse_zone_type(value: str) -> ZoneType:
-        """Convertit une chaîne en ZoneType.
+        """Convert a string into a ZoneType.
+
+        Args:
+            value: String to convert.
+
+        Returns:
+            The matching ZoneType.
 
         Raises:
-            ParseError: Le type n'est pas l'un des types du sujet.
+            ParseError: If the value is not one of the subject's zone
+                types.
         """
         try:
             return ZoneType(value)
@@ -341,11 +380,12 @@ class Parser:
             ) from None
 
     def _validate_map(self) -> None:
-        """Vérifie la cohérence de la carte une fois toutes les lignes lues.
+        """Check the map's overall consistency once every line has been
+        read.
 
         Raises:
-            ParseError: nb_drones, start_hub ou end_hub manquant, ou aucun
-                chemin possible entre le départ et l'arrivée.
+            ParseError: If nb_drones, start_hub or end_hub is missing,
+                or no path exists between the start and end zones.
         """
         if self.nb_drones == 0:
             raise ParseError(
@@ -364,14 +404,14 @@ class Parser:
             )
 
     def _is_reachable(self, start: Zone, end: Zone) -> bool:
-        """Parcours en largeur ignorant les zones 'blocked'.
+        """Run a depth-first search, ignoring 'blocked' zones.
 
         Args:
-            start: Zone de départ.
-            end: Zone d'arrivée.
+            start: Starting zone.
+            end: Destination zone.
 
         Returns:
-            True s'il existe au moins un chemin de start à end.
+            True if at least one path exists from start to end.
         """
         neighbors: Dict[str, List[str]] = {name: [] for name in self.zones}
         for conn in self.connections:

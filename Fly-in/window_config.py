@@ -1,3 +1,5 @@
+"""Dynamic pygame window sizing and map-to-screen coordinate mapping."""
+
 from typing import Dict, Tuple
 
 import pygame
@@ -6,8 +8,8 @@ from models import Zone
 
 
 class WindowConfig:
-    """Calcule et stocke la configuration
-    de la fenêtre pygame selon la carte."""
+    """Computes and stores the pygame window configuration for a given
+    map."""
 
     MIN_SPACING: int = 250
     PADDING_H: int = 200
@@ -18,10 +20,10 @@ class WindowConfig:
     MIN_HEIGHT: int = 850
 
     def __init__(self, zones: Dict[str, Zone]) -> None:
-        """Initialise la config depuis les zones de la carte.
+        """Initialize the configuration from the map's zones.
 
         Args:
-            zones: Dictionnaire des zones de la carte.
+            zones: Map zones, indexed by name.
         """
         x_coords = [z.x for z in zones.values()]
         y_coords = [z.y for z in zones.values()]
@@ -40,11 +42,11 @@ class WindowConfig:
         self.draw_h: int = self.height - self.draw_margin_y - 40
 
     def _compute_size(self) -> Tuple[int, int]:
-        """Calcule la taille optimale de
-        la fenêtre selon la dispersion des zones.
+        """Compute the optimal window size based on how spread out the
+        zones are.
 
         Returns:
-            Tuple (width, height) en pixels.
+            Tuple (width, height) in pixels.
         """
         raw_w = self.range_x * self.MIN_SPACING + self.PADDING_H
         raw_h = (
@@ -60,14 +62,14 @@ class WindowConfig:
         return width, height
 
     def to_screen_coords(self, x: int, y: int) -> Tuple[int, int]:
-        """Convertit des coordonnées carte en coordonnées écran.
+        """Convert map coordinates into screen coordinates.
 
         Args:
-            x: Coordonnée X dans la carte.
-            y: Coordonnée Y dans la carte.
+            x: X coordinate on the map.
+            y: Y coordinate on the map.
 
         Returns:
-            Tuple (screen_x, screen_y) en pixels.
+            Tuple (screen_x, screen_y) in pixels.
         """
         screen_x = int(
             self.DRAW_MARGIN_X + (x - self.min_x) / self.range_x * self.draw_w

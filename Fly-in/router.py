@@ -1,4 +1,7 @@
+"""Space-time Dijkstra routing engine for the drone fleet."""
+
 import heapq
+import itertools
 from typing import Dict, List, Optional, Set, Tuple
 
 from models import Connection, Zone, ZoneType
@@ -8,11 +11,28 @@ PathStep = Tuple[str, int, bool]
 
 
 class SpaceTimeRouter:
+    """Computes conflict-free, turn-by-turn paths for a fleet of drones.
+
+    Each drone is routed independently, one after another (a technique
+    known as prioritized planning), over a space-time expanded graph:
+    every state explored is a pair (zone name, turn number), which lets
+    the router know that a zone can be occupied right now but free again
+    a few turns later. Once a drone's path is found, it is reserved so
+    that every later drone routes around it.
+    """
+
     def __init__(
         self,
         zones: Dict[str, Zone],
-        connections: List[Connection]
+        connections: List[Connection],
     ) -> None:
+        """Build the router's adjacency list from the map's zones and
+        connections.
+
+        Args:
+            zones: Map zones, indexed by name.
+            connections: Bidirectional connections between zones.
+        """
         self.zones = zones
         self.connections = connections
 
@@ -30,8 +50,21 @@ class SpaceTimeRouter:
     def compute_all_routes(
         self, nb_drones: int, start: Zone, end: Zone
     ) -> Dict[str, List[PathStep]]:
-        """Calcule l'itinéraire optimal
-        pour chaque drone l'un après l'autre."""
+        """Compute the optimal route for every drone, one after another.
+
+        Args:
+            nb_drones: Number of drones to route.
+            start: Starting zone, shared by every drone.
+            end: Destination zone.
+
+        Returns:
+            Dictionary mapping each drone id ("d1", "d2", ...) to its
+            path.
+
+        Raises:
+            ValueError: If a drone cannot reach the destination given
+                the traffic already reserved by earlier drones.
+        """
         all_paths: Dict[str, List[PathStep]] = {}
         self.max_tour = len(self.zones) * 10 + 50 + 2 * nb_drones
 
@@ -53,15 +86,42 @@ class SpaceTimeRouter:
     def _find_path_for_drone(
         self, start: Zone, end: Zone
     ) -> Optional[List[PathStep]]:
-        queue: List[Tuple[int, int, str, List[PathStep]]] = []
-        heapq.heappush(queue, (0, 0, start.name, [(start.name, 0, False)]))
+        """Find the fastest conflict-free path for a single drone.
+
+        Runs a Dijkstra search over (zone, turn) states. The priority
+        queue is ordered primarily by arrival turn, so the path with the
+        fewest turns is always found first — matching the subject's
+        scoring rule that turn count is the primary metric — and only
+        secondarily by an accumulated "priority score", which breaks
+        ties between equally-fast paths in favor of routes that use more
+        PRIORITY zones, as required by the subject.
+
+        Args:
+            start: Starting zone.
+            end: Destination zone.
+
+        Returns:
+            The path as a list of (label, turn, is_connection) steps, or
+            None if no valid path exists within the turn horizon.
+        """
+        counter = itertools.count()
+        # Heap entries: (arrival_turn, priority_score, tie_breaker,
+        # current_zone_name, path_so_far). Sorting on arrival_turn first
+        # guarantees the fewest-turns path is popped first; priority_score
+        # only ever breaks ties between paths that take the same number
+        # of turns.
+        queue: List[Tuple[int, int, int, str, List[PathStep]]] = []
+        heapq.heappush(
+            queue,
+            (0, 0, next(counter), start.name, [(start.name, 0, False)]),
+        )
 
         visited: Set[Tuple[str, int]] = set()
 
         max_tour = self.max_tour
 
         while queue:
-            cost, tour, curr_name, path = heapq.heappop(queue)
+            tour, priority_score, _, curr_name, path = heapq.heappop(queue)
 
             if curr_name == end.name:
                 return path
@@ -86,8 +146,9 @@ class SpaceTimeRouter:
                 heapq.heappush(
                     queue,
                     (
-                        cost + 1,
                         next_tour,
+                        priority_score,
+                        next(counter),
                         curr_name,
                         path + [(curr_name, next_tour, False)],
                     ),
@@ -99,7 +160,6 @@ class SpaceTimeRouter:
 
                 is_restricted = neighbor.zone_type == ZoneType.RESTRICTED
                 travel_cost = 2 if is_restricted else 1
-                priority_bonus = neighbor.priority_bonus
                 arrival_tour = tour + travel_cost
 
                 if arrival_tour > max_tour:
@@ -138,8 +198,9 @@ class SpaceTimeRouter:
                     heapq.heappush(
                         queue,
                         (
-                            cost + travel_cost + priority_bonus,
                             arrival_tour,
+                            priority_score + neighbor.priority_bonus,
+                            next(counter),
                             neighbor.name,
                             new_path,
                         ),
@@ -147,8 +208,13 @@ class SpaceTimeRouter:
         return None
 
     def _reserve_path(self, path: List[PathStep]) -> None:
-        """Enregistre le chemin (zones et connexions en transit) pour
-        que les drones suivants adaptent leur trajectoire."""
+        """Record a found path's zone and connection usage so that every
+        later drone plans around it.
+
+        Args:
+            path: The path to reserve, as returned by
+                `_find_path_for_drone`.
+        """
         zone_steps = [
             (label, tour)
             for label, tour, is_conn in path

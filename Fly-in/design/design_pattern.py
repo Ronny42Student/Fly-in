@@ -1,241 +1,262 @@
-import os
-from typing import Optional, List, Tuple
+"""Colors and pygame drawing helpers shared by the parser and the
+visualizer."""
+
 import math
+import os
+from typing import Dict, List, Optional, Tuple
 
 import pygame
 
 from models import ZoneType
 
-RAINBOW_COLORS = [
-    (255, 0, 0), (255, 127, 0), (255, 255, 0),
-    (0, 255, 0), (0, 0, 255), (75, 0, 130), (148, 0, 211),
-]
 
-RAINBOW_KEYWORD = "rainbow"
+class DesignPattern:
+    """Namespace class for shared colors, color parsing, and drawing
+    helpers.
 
-BG_COLOR = (135, 170, 210)
-
-LINE_COLOR = (10, 20, 60)
-ACTIVE_LINE_COLOR = (255, 220, 0)
-
-TEXT_COLOR = (5, 10, 40)
-
-DRONE_COLOR = (255, 100, 0)
-
-TYPE_COLORS = {
-    ZoneType.NORMAL: (20, 60, 180),
-    ZoneType.BLOCKED: (180, 0, 30),
-    ZoneType.RESTRICTED: (200, 80, 0),
-    ZoneType.PRIORITY: (0, 140, 60),
-}
-
-
-def color_to_rgb(name: str) -> tuple[int, int, int]:
-    """Convertit un nom de couleur du fichier de carte en tuple RGB.
-
-    Source unique de validation des couleurs : le parseur et le visualiseur
-    l'utilisent tous les deux, donc ils s'accordent toujours sur ce qui est
-    valide. Accepte les noms pygame (red, lightblue...) et l'hexadécimal
-    (#ff0000). Le mot-clé 'rainbow' n'est pas une couleur RGB : il doit être
-    traité à part (voir RAINBOW_KEYWORD).
-
-    Args:
-        name: Nom de la couleur tel qu'écrit dans le fichier de carte.
-
-    Returns:
-        Tuple (r, g, b).
-
-    Raises:
-        ValueError: Si la couleur est inconnue de pygame.
+    Grouping these as static/class methods (rather than loose module
+    functions) is what lets the parser and the visualizer share a
+    single, object-oriented source of truth for color validation and
+    drawing, in line with the subject's "completely object-oriented"
+    constraint.
     """
-    try:
-        color = pygame.Color(name)
-    except (ValueError, TypeError):
-        raise ValueError(f"Couleur invalide : '{name}'") from None
-    return (color.r, color.g, color.b)
 
+    RAINBOW_COLORS: List[Tuple[int, int, int]] = [
+        (255, 0, 0), (255, 127, 0), (255, 255, 0),
+        (0, 255, 0), (0, 0, 255), (75, 0, 130), (148, 0, 211),
+    ]
 
-def draw_text_with_shadow_vertical(
-    screen: pygame.Surface,
-    text: str,
-    font: pygame.font.Font,
-    color: tuple[int, int, int],
-    center: tuple[int, int],
-) -> None:
-    """Dessine un texte avec ombre portée pour lisibilité sur fond photo.
+    RAINBOW_KEYWORD: str = "rainbow"
 
-    Args:
-        screen: Surface pygame cible.
-        text: Texte à afficher.
-        font: Police pygame.
-        color: Couleur du texte principal.
-        center: Position centrale (x, y) en pixels.
-    """
-    shadow_color: tuple[int, int, int] = (220, 230, 255)
-    shadow_surf = font.render(text, True, shadow_color)
-    shadow_surf = pygame.transform.rotate(shadow_surf, 90)
-    shadow_rect = shadow_surf.get_rect(center=(center[0] + 1, center[1] + 1))
-    screen.blit(shadow_surf, shadow_rect)
+    BG_COLOR: Tuple[int, int, int] = (135, 170, 210)
 
-    text_surf = font.render(text, True, color)
-    text_surf = pygame.transform.rotate(text_surf, 90)
-    text_rect = text_surf.get_rect(center=center)
-    screen.blit(text_surf, text_rect)
+    LINE_COLOR: Tuple[int, int, int] = (10, 20, 60)
+    ACTIVE_LINE_COLOR: Tuple[int, int, int] = (255, 220, 0)
 
+    TEXT_COLOR: Tuple[int, int, int] = (5, 10, 40)
 
-def draw_text_with_shadow(
-    screen: pygame.Surface,
-    text: str,
-    font: pygame.font.Font,
-    color: tuple[int, int, int],
-    center: tuple[int, int],
-) -> None:
-    """Dessine un texte avec ombre portée pour lisibilité sur fond photo.
+    DRONE_COLOR: Tuple[int, int, int] = (255, 100, 0)
 
-    Args:
-        screen: Surface pygame cible.
-        text: Texte à afficher.
-        font: Police pygame.
-        color: Couleur du texte principal.
-        center: Position centrale (x, y) en pixels.
-    """
-    shadow_color: tuple[int, int, int] = (220, 230, 255)
-    shadow_surf = font.render(text, True, shadow_color)
-    shadow_rect = shadow_surf.get_rect(center=(center[0] + 1, center[1] + 1))
-    screen.blit(shadow_surf, shadow_rect)
+    TYPE_COLORS: Dict[ZoneType, Tuple[int, int, int]] = {
+        ZoneType.NORMAL: (20, 60, 180),
+        ZoneType.BLOCKED: (180, 0, 30),
+        ZoneType.RESTRICTED: (200, 80, 0),
+        ZoneType.PRIORITY: (0, 140, 60),
+    }
 
-    text_surf = font.render(text, True, color)
-    text_rect = text_surf.get_rect(center=center)
-    screen.blit(text_surf, text_rect)
+    DRONE_IMAGE_PATH: str = "assets/drone.png"
+    DRONE_IMAGE_SIZE: int = 100
 
+    _drone_image_cache: Dict[int, Optional[pygame.Surface]] = {}
 
-DRONE_IMAGE_PATH = "assets/drone.png"
-DRONE_IMAGE_SIZE = 100
+    @staticmethod
+    def color_to_rgb(name: str) -> Tuple[int, int, int]:
+        """Convert a map-file color name into an RGB tuple.
 
-_drone_image_cache: dict[int, Optional[pygame.Surface]] = {}
+        This is the single source of color validation: both the parser
+        and the visualizer use it, so they always agree on what counts
+        as a valid color. Accepts pygame color names (red, lightblue,
+        ...) and hex codes (#ff0000). The 'rainbow' keyword is not an
+        RGB color and must be handled separately (see RAINBOW_KEYWORD).
 
+        Args:
+            name: The color name as written in the map file.
 
-def _load_drone_image(size: int) -> Optional[pygame.Surface]:
-    """Charge et met en cache l'image PNG du drone, redimensionnée.
+        Returns:
+            Tuple (r, g, b).
 
-    Args:
-        size: Taille cible en pixels (carré).
-
-    Returns:
-        Surface pygame prête à l'emploi,
-        ou None si le fichier est absent/invalide.
-    """
-    if size in _drone_image_cache:
-        return _drone_image_cache[size]
-
-    surface: Optional[pygame.Surface] = None
-    if os.path.isfile(DRONE_IMAGE_PATH):
+        Raises:
+            ValueError: If the color is unknown to pygame.
+        """
         try:
-            raw = pygame.image.load(DRONE_IMAGE_PATH).convert_alpha()
-            surface = pygame.transform.smoothscale(raw, (size, size))
-        except pygame.error:
-            surface = None
+            color = pygame.Color(name)
+        except (ValueError, TypeError):
+            raise ValueError(f"Couleur invalide : '{name}'") from None
+        return (color.r, color.g, color.b)
 
-    _drone_image_cache[size] = surface
-    return surface
+    @staticmethod
+    def draw_text_with_shadow_vertical(
+        screen: pygame.Surface,
+        text: str,
+        font: pygame.font.Font,
+        color: Tuple[int, int, int],
+        center: Tuple[int, int],
+    ) -> None:
+        """Draw vertical (90°-rotated) text with a drop shadow, for
+        readability over a photo background.
 
-
-def draw_drone_icon(
-    screen: pygame.Surface,
-    center: tuple[int, int],
-    color: tuple[int, int, int],
-    drone_id: str,
-    font: pygame.font.Font,
-) -> None:
-    """Dessine le drone depuis un PNG (assets/drone.png)
-    ou en vectoriel si le fichier est absent.
-
-    L'image PNG est chargée une seule fois puis mise en cache.
-    Le numéro du drone est toujours affiché par-dessus.
-
-    Args:
-        screen: Surface pygame cible.
-        center: Position centrale (x, y) en pixels.
-        color: Couleur de fallback (utilisée si le PNG est absent).
-        drone_id: Identifiant du drone (ex: 'd1').
-        font: Police pour l'identifiant.
-    """
-    x, y = center
-    img = _load_drone_image(DRONE_IMAGE_SIZE)
-
-    if img is not None:
-        rect = img.get_rect(center=(x, y))
-        screen.blit(img, rect)
-    else:
-        size = 14
-        arm_color: tuple[int, int, int] = (240, 245, 255)
-        arm_shadow: tuple[int, int, int] = (10, 20, 60)
-
-        for offset in range(2, 0, -1):
-            pygame.draw.line(
-                screen,
-                arm_shadow,
-                (x - size - offset, y - size - offset),
-                (x + size + offset, y + size + offset),
-                4,
-            )
-            pygame.draw.line(
-                screen,
-                arm_shadow,
-                (x - size - offset, y + size + offset),
-                (x + size + offset, y - size - offset),
-                4,
-            )
-
-        pygame.draw.line(
-            screen, arm_color, (x - size, y - size), (x + size, y + size), 3
+        Args:
+            screen: Target pygame surface.
+            text: Text to display.
+            font: Pygame font.
+            color: Main text color.
+            center: Center position (x, y) in pixels.
+        """
+        shadow_color: Tuple[int, int, int] = (220, 230, 255)
+        shadow_surf = font.render(text, True, shadow_color)
+        shadow_surf = pygame.transform.rotate(shadow_surf, 90)
+        shadow_rect = shadow_surf.get_rect(
+            center=(center[0] + 1, center[1] + 1)
         )
-        pygame.draw.line(
-            screen, arm_color, (x - size, y + size), (x + size, y - size), 3
+        screen.blit(shadow_surf, shadow_rect)
+
+        text_surf = font.render(text, True, color)
+        text_surf = pygame.transform.rotate(text_surf, 90)
+        text_rect = text_surf.get_rect(center=center)
+        screen.blit(text_surf, text_rect)
+
+    @staticmethod
+    def draw_text_with_shadow(
+        screen: pygame.Surface,
+        text: str,
+        font: pygame.font.Font,
+        color: Tuple[int, int, int],
+        center: Tuple[int, int],
+    ) -> None:
+        """Draw horizontal text with a drop shadow, for readability over
+        a photo background.
+
+        Args:
+            screen: Target pygame surface.
+            text: Text to display.
+            font: Pygame font.
+            color: Main text color.
+            center: Center position (x, y) in pixels.
+        """
+        shadow_color: Tuple[int, int, int] = (220, 230, 255)
+        shadow_surf = font.render(text, True, shadow_color)
+        shadow_rect = shadow_surf.get_rect(
+            center=(center[0] + 1, center[1] + 1)
         )
+        screen.blit(shadow_surf, shadow_rect)
 
-        motor_fill: tuple[int, int, int] = (200, 210, 230)
-        motor_border: tuple[int, int, int] = (10, 20, 60)
-        motor_positions = [
-            (-size, -size), (size, -size), (-size, size), (size, size)
-        ]
-        for dx, dy in motor_positions:
-            pygame.draw.circle(screen, motor_border, (x + dx, y + dy), 5)
-            pygame.draw.circle(screen, motor_fill, (x + dx, y + dy), 4)
+        text_surf = font.render(text, True, color)
+        text_rect = text_surf.get_rect(center=center)
+        screen.blit(text_surf, text_rect)
 
-        pygame.draw.circle(screen, arm_shadow, (x, y), 10)
-        pygame.draw.circle(screen, color, (x, y), 8)
-        pygame.draw.circle(screen, (255, 255, 255), (x, y), 8, 1)
+    @classmethod
+    def _load_drone_image(cls, size: int) -> Optional[pygame.Surface]:
+        """Load and cache the drone PNG image, resized to `size`.
 
-    draw_text_with_shadow_vertical(
-        screen, drone_id[1:],
-        font,
-        (0, 0, 0),
-        (x, y)
-    )
+        Args:
+            size: Target size in pixels (the image is square).
 
+        Returns:
+            A ready-to-use pygame surface, or None if the file is
+            missing or invalid.
+        """
+        if size in cls._drone_image_cache:
+            return cls._drone_image_cache[size]
 
-def draw_rainbow_circle(
-    screen: pygame.Surface,
-    center: tuple[int, int],
-    radius: int,
-) -> None:
-    """Dessine un cercle en dégradé arc-en-ciel (secteurs colorés)."""
-    x, y = center
-    n = len(RAINBOW_COLORS)
-    for i, color in enumerate(RAINBOW_COLORS):
-        start_angle = (2 * math.pi / n) * i
-        end_angle = (2 * math.pi / n) * (i + 1)
-        points: List[Tuple[int, int]] = [(x, y)]
-        steps = 10
-        for s in range(steps + 1):
-            angle = start_angle + (end_angle - start_angle) * s / steps
+        surface: Optional[pygame.Surface] = None
+        if os.path.isfile(cls.DRONE_IMAGE_PATH):
+            try:
+                raw = pygame.image.load(cls.DRONE_IMAGE_PATH).convert_alpha()
+                surface = pygame.transform.smoothscale(raw, (size, size))
+            except pygame.error:
+                surface = None
 
-            points.append(
-                (
-                    int(x + radius * math.cos(angle)),
-                    int(y + radius * math.sin(angle))
+        cls._drone_image_cache[size] = surface
+        return surface
+
+    @classmethod
+    def draw_drone_icon(
+        cls,
+        screen: pygame.Surface,
+        center: Tuple[int, int],
+        color: Tuple[int, int, int],
+        drone_id: str,
+        font: pygame.font.Font,
+    ) -> None:
+        """Draw a drone, from a PNG (assets/drone.png) if available, or
+        as a small vector icon otherwise.
+
+        The PNG is loaded once and then cached. The drone's numeric
+        identifier is always drawn on top of the icon.
+
+        Args:
+            screen: Target pygame surface.
+            center: Center position (x, y) in pixels.
+            color: Fallback color, used only if the PNG is missing.
+            drone_id: Drone identifier (e.g. 'd1').
+            font: Font used to render the identifier.
+        """
+        x, y = center
+        img = cls._load_drone_image(cls.DRONE_IMAGE_SIZE)
+
+        if img is not None:
+            rect = img.get_rect(center=(x, y))
+            screen.blit(img, rect)
+        else:
+            size = 14
+            arm_color: Tuple[int, int, int] = (240, 245, 255)
+            arm_shadow: Tuple[int, int, int] = (10, 20, 60)
+
+            for offset in range(2, 0, -1):
+                pygame.draw.line(
+                    screen, arm_shadow,
+                    (x - size - offset, y - size - offset),
+                    (x + size + offset, y + size + offset), 4,
                 )
+                pygame.draw.line(
+                    screen, arm_shadow,
+                    (x - size - offset, y + size + offset),
+                    (x + size + offset, y - size - offset), 4,
+                )
+
+            pygame.draw.line(
+                screen, arm_color,
+                (x - size, y - size), (x + size, y + size), 3,
+            )
+            pygame.draw.line(
+                screen, arm_color,
+                (x - size, y + size), (x + size, y - size), 3,
             )
 
-        pygame.draw.polygon(screen, color, points)
+            motor_fill: Tuple[int, int, int] = (200, 210, 230)
+            motor_border: Tuple[int, int, int] = (10, 20, 60)
+            motor_positions = [
+                (-size, -size), (size, -size), (-size, size), (size, size)
+            ]
+            for dx, dy in motor_positions:
+                pygame.draw.circle(screen, motor_border, (x + dx, y + dy), 5)
+                pygame.draw.circle(screen, motor_fill, (x + dx, y + dy), 4)
+
+            pygame.draw.circle(screen, arm_shadow, (x, y), 10)
+            pygame.draw.circle(screen, color, (x, y), 8)
+            pygame.draw.circle(screen, (255, 255, 255), (x, y), 8, 1)
+
+        cls.draw_text_with_shadow_vertical(
+            screen, drone_id[1:], font, (0, 0, 0), (x, y)
+        )
+
+    @staticmethod
+    def draw_rainbow_circle(
+        screen: pygame.Surface,
+        center: Tuple[int, int],
+        radius: int,
+    ) -> None:
+        """Draw a circle filled with a rainbow gradient (colored
+        sectors), used for the special 'rainbow' zone color.
+
+        Args:
+            screen: Target pygame surface.
+            center: Center position (x, y) in pixels.
+            radius: Circle radius in pixels.
+        """
+        x, y = center
+        n = len(DesignPattern.RAINBOW_COLORS)
+        for i, color in enumerate(DesignPattern.RAINBOW_COLORS):
+            start_angle = (2 * math.pi / n) * i
+            end_angle = (2 * math.pi / n) * (i + 1)
+            points: List[Tuple[int, int]] = [(x, y)]
+            steps = 10
+            for s in range(steps + 1):
+                angle = start_angle + (end_angle - start_angle) * s / steps
+                points.append(
+                    (
+                        int(x + radius * math.cos(angle)),
+                        int(y + radius * math.sin(angle)),
+                    )
+                )
+            pygame.draw.polygon(screen, color, points)
