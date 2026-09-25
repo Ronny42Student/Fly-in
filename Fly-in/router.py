@@ -105,11 +105,7 @@ class SpaceTimeRouter:
             None if no valid path exists within the turn horizon.
         """
         counter = itertools.count()
-        # Heap entries: (arrival_turn, priority_score, tie_breaker,
-        # current_zone_name, path_so_far). Sorting on arrival_turn first
-        # guarantees the fewest-turns path is popped first; priority_score
-        # only ever breaks ties between paths that take the same number
-        # of turns.
+
         queue: List[Tuple[int, int, int, str, List[PathStep]]] = []
         heapq.heappush(
             queue,
