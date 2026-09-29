@@ -37,7 +37,7 @@ class Simulation:
         """
         if not argv:
             print(
-                "Usage: ./fly-in <chemin_de_la_carte.txt> [--visual]",
+                "Usage: ./fly-in <map_path.txt> [--visual]",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -51,7 +51,7 @@ class Simulation:
 
         if not map_path:
             print(
-                "Erreur : Veuillez spécifier un fichier de carte.",
+                "Error: Please provide a map file.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -73,13 +73,13 @@ class Simulation:
         try:
             self.parser.parse_file(self.map_path)
         except ParseError as e:
-            print(f"Erreur de parsing : {e}", file=sys.stderr)
+            print(f"Parsing error: {e}", file=sys.stderr)
             sys.exit(1)
 
         if self.parser.start_zone is None or self.parser.end_zone is None:
             print(
-                "Erreur : La zone de départ ou "
-                "d'arrivée n'est pas définie dans la carte.",
+                "Error: The start or end zone is not defined "
+                "in the map.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -98,7 +98,7 @@ class Simulation:
                 self.parser.end_zone,
             )
         except ValueError as e:
-            print(f"Erreur de routage : {e}", file=sys.stderr)
+            print(f"Routing error: {e}", file=sys.stderr)
             sys.exit(1)
 
     def _print_trace(self) -> None:
@@ -165,7 +165,7 @@ class Simulation:
                 self.parser.zones, self.parser.connections, self.routes
             ).run()
         except Exception as e:
-            print(f"Erreur du visualiseur : {e}", file=sys.stderr)
+            print(f"Visualizer error: {e}", file=sys.stderr)
             sys.exit(1)
 
 

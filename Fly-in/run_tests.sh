@@ -12,49 +12,55 @@ echo -e "${CYAN}====================================================${NC}"
 echo -e "${CYAN}    FLY-IN AUTOMATED TEST SUITE VALIDATION          ${NC}"
 echo -e "${CYAN}====================================================${NC}"
 
+# Usage: run_test <category> <map file> <max turns target> <description>
+# Targets come from the subject (VII.7 Performance Benchmarks).
 run_test() {
     local category=$1
     local map_name=$2
-    local expected=$3
+    local target=$3
+    local expected=$4
 
-    echo -e "\n[${category}] Test de la carte : ${YELLOW}${map_name}${NC}"
+    echo -e "\n[${category}] Testing map: ${YELLOW}${map_name}${NC}"
 
     if [ ! -f "${MAPS_DIR}/${map_name}" ]; then
-        echo -e "  ${RED}❌ Fichier introuvable : ${map_name}${NC}"
+        echo -e "  ${RED}❌ File not found: ${map_name}${NC}"
         return
     fi
 
-    ./fly-in "${MAPS_DIR}/${map_name}" --visual > temp_output.log 2>&1
+    # No --visual here: the pygame window would block the test suite.
+    ./fly-in "${MAPS_DIR}/${map_name}" > temp_output.log 2>&1
 
     if [ $? -eq 0 ]; then
-        local turns=$(cat temp_output.log | wc -l)
-        if [ -z "$turns" ]; then
-            turns=0
+        local turns
+        turns=$(wc -l < temp_output.log)
+        if [ "$turns" -le "$target" ]; then
+            echo -e "  ${GREEN}✅ Success!${NC} Solved in ${GREEN}${turns} turns${NC} (${expected})"
+        else
+            echo -e "  ${YELLOW}⚠️  Valid but above target:${NC} ${turns} turns (${expected})"
         fi
-        echo -e "  ${GREEN}✅ Succès !${NC} Simulation résolue en ${GREEN}${turns} tours${NC} (${expected})"
     else
-        echo -e "  ${RED}❌ Échec de la simulation !${NC}"
-        cat temp_output.log | grep -i "erreur" | sed 's/^/    /'
+        echo -e "  ${RED}❌ Simulation failed!${NC}"
+        grep -i "error" temp_output.log | sed 's/^/    /'
     fi
     rm -f temp_output.log
 }
 
-echo -e "\n${GREEN}--- 🟢 CATEGORIE: EASY ---${NC}"
-run_test "EASY" "01_linear_path.txt" "Attendu: < 10 tours"
-run_test "EASY" "02_simple_fork.txt" "Attendu: < 10 tours"
-run_test "EASY" "03_basic_capacity.txt" "Attendu: < 10 tours"
+echo -e "\n${GREEN}--- 🟢 CATEGORY: EASY ---${NC}"
+run_test "EASY" "01_linear_path.txt" 6 "Target: <= 6 turns"
+run_test "EASY" "02_simple_fork.txt" 8 "Target: <= 8 turns"
+run_test "EASY" "03_basic_capacity.txt" 6 "Target: <= 6 turns"
 
-echo -e "\n${YELLOW}--- 🟡 CATEGORIE: MEDIUM ---${NC}"
-run_test "MEDIUM" "01_dead_end_trap.txt" "Attendu: 10-30 tours"
-run_test "MEDIUM" "02_circular_loop.txt" "Attendu: 10-30 tours"
-run_test "MEDIUM" "03_priority_puzzle.txt" "Attendu: 10-30 tours"
+echo -e "\n${YELLOW}--- 🟡 CATEGORY: MEDIUM ---${NC}"
+run_test "MEDIUM" "01_dead_end_trap.txt" 12 "Target: <= 12 turns"
+run_test "MEDIUM" "02_circular_loop.txt" 15 "Target: <= 15 turns"
+run_test "MEDIUM" "03_priority_puzzle.txt" 12 "Target: <= 12 turns"
 
-echo -e "\n${RED}--- 🔴 CATEGORIE: HARD ---${NC}"
-run_test "HARD" "01_maze_nightmare.txt" "Attendu: 30+ tours"
-run_test "HARD" "02_capacity_hell.txt" "Attendu: Spécifique timing"
-run_test "HARD" "03_ultimate_challenge.txt" "Le test ultime complet"
+echo -e "\n${RED}--- 🔴 CATEGORY: HARD ---${NC}"
+run_test "HARD" "01_maze_nightmare.txt" 30 "Target: <= 30 turns"
+run_test "HARD" "02_capacity_hell.txt" 35 "Target: <= 35 turns"
+run_test "HARD" "03_ultimate_challenge.txt" 45 "Target: <= 45 turns"
 
-echo -e "\n${NC}--- ⚫ CATEGORIE: CHALLENGER ---${NC}"
-run_test "CHALLENGER" "01_the_impossible_dream.txt" "Record à battre: 41 tours"
+echo -e "\n${NC}--- ⚫ CATEGORY: CHALLENGER ---${NC}"
+run_test "CHALLENGER" "01_the_impossible_dream.txt" 44 "Record to beat: 45 turns"
 
 echo -e "\n${CYAN}====================================================${NC}"

@@ -74,8 +74,8 @@ class SpaceTimeRouter:
 
             if not path:
                 raise ValueError(
-                    "Impossible de trouver un itinéraire pour le "
-                    f"drone {drone_id}. Bloqué par les contraintes de trafic."
+                    f"Unable to find a route for drone {drone_id}. "
+                    "Blocked by traffic constraints."
                 )
 
             all_paths[drone_id] = path
@@ -186,7 +186,7 @@ class SpaceTimeRouter:
                 if is_zone_free and is_link_free:
                     new_path = list(path)
                     if is_restricted:
-                        conn_label = f"{link_key[0]}_{link_key[1]}"
+                        conn_label = f"{curr_name}-{neighbor.name}"
                         new_path.append((conn_label, tour + 1, True))
                     new_path.append((neighbor.name, arrival_tour, False))
 

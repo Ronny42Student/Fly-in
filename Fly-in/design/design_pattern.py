@@ -5,9 +5,12 @@ import math
 import os
 from typing import Dict, List, Optional, Tuple
 
-import pygame
-
 from models import ZoneType
+
+# Hide pygame's start-up banner: it would pollute the simulation output.
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+
+import pygame  # noqa: E402
 
 
 class DesignPattern:
@@ -71,7 +74,7 @@ class DesignPattern:
         try:
             color = pygame.Color(name)
         except (ValueError, TypeError):
-            raise ValueError(f"Couleur invalide : '{name}'") from None
+            raise ValueError(f"Invalid color: '{name}'") from None
         return (color.r, color.g, color.b)
 
     @staticmethod

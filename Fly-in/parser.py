@@ -56,11 +56,11 @@ class Parser:
                 content = f.read()
         except UnicodeDecodeError as e:
             raise ParseError(
-                f"Le fichier '{file_path}' n'est pas en UTF-8 valide."
+                f"File '{file_path}' is not valid UTF-8."
             ) from e
         except OSError as e:
             raise ParseError(
-                f"Impossible de lire '{file_path}' : {e.strerror}"
+                f"Unable to read '{file_path}': {e.strerror}"
             ) from e
         self.parse_lines(content.split("\n"))
 
@@ -81,7 +81,7 @@ class Parser:
             try:
                 self._parse_line(line)
             except ParseError as e:
-                raise ParseError(f"[Ligne {line_num}] {e}") from e
+                raise ParseError(f"[Line {line_num}] {e}") from e
         self._validate_map()
 
     def _parse_line(self, line: str) -> None:
@@ -95,8 +95,8 @@ class Parser:
         keyword = keyword.strip()
         if not sep:
             raise ParseError(
-                f"Format de ligne non reconnu : '{line}' "
-                "(attendu 'mot-clé: valeur')"
+                f"Unrecognized line format: '{line}' "
+                "(expected 'keyword: value')"
             )
 
         if keyword == "nb_drones":
@@ -105,13 +105,13 @@ class Parser:
 
         if keyword not in HUB_PREFIXES and keyword != "connection":
             raise ParseError(
-                f"Mot-clé non reconnu : '{keyword}' (attendu : nb_drones, "
-                "start_hub, end_hub, hub ou connection)"
+                f"Unrecognized keyword: '{keyword}' (expected: nb_drones, "
+                "start_hub, end_hub, hub or connection)"
             )
         if self.nb_drones == 0:
             raise ParseError(
-                "La première ligne utile doit être "
-                "'nb_drones: <entier positif>'."
+                "The first meaningful line must be "
+                "'nb_drones: <positive integer>'."
             )
 
         if keyword == "connection":
@@ -126,7 +126,7 @@ class Parser:
             value: Text found after the ':' on the nb_drones line.
         """
         if self.nb_drones != 0:
-            raise ParseError("'nb_drones' est défini plusieurs fois.")
+            raise ParseError("'nb_drones' is defined more than once.")
         self.nb_drones = self._parse_positive_int(value.strip(), "nb_drones")
 
     def _parse_hub(self, prefix: str, rest: str) -> None:
@@ -143,30 +143,30 @@ class Parser:
         tokens = body.split()
         if len(tokens) != 3:
             raise ParseError(
-                f"Format de hub invalide : '{body}' (attendu : "
-                "'<nom> <x> <y> [métadonnées]', le nom ne doit contenir "
-                "ni espace ni tiret)"
+                f"Invalid hub format: '{body}' (expected: "
+                "'<name> <x> <y> [metadata]', the name must contain "
+                "neither spaces nor dashes)"
             )
         name, x_str, y_str = tokens
 
         if "-" in name:
-            raise ParseError(f"Le nom '{name}' ne doit pas contenir de tiret.")
+            raise ParseError(f"Name '{name}' must not contain a dash.")
         if name in self.zones:
-            raise ParseError(f"Zone en doublon : '{name}'.")
+            raise ParseError(f"Duplicate zone: '{name}'.")
         if is_start and self.start_zone is not None:
-            raise ParseError("'start_hub' est défini plusieurs fois.")
+            raise ParseError("'start_hub' is defined more than once.")
         if is_end and self.end_zone is not None:
-            raise ParseError("'end_hub' est défini plusieurs fois.")
+            raise ParseError("'end_hub' is defined more than once.")
 
         x = self._parse_coordinate(x_str, "x")
         y = self._parse_coordinate(y_str, "y")
 
-        meta = self.parse_metadata(meta_str, HUB_METADATA_KEYS, "un hub")
+        meta = self.parse_metadata(meta_str, HUB_METADATA_KEYS, "a hub")
 
         zone_type = self._parse_zone_type(meta.get("zone", "normal"))
         if (is_start or is_end) and zone_type == ZoneType.BLOCKED:
             raise ParseError(
-                f"Le hub '{name}' ({prefix}) ne peut pas être 'blocked'."
+                f"Hub '{name}' ({prefix}) cannot be 'blocked'."
             )
 
         if is_start or is_end:
@@ -201,36 +201,36 @@ class Parser:
         parts = body.split("-")
         if len(parts) > 2:
             raise ParseError(
-                f"Connexion invalide : '{body}' (les noms de zones ne "
-                "peuvent pas contenir de tiret)"
+                f"Invalid connection: '{body}' (zone names cannot "
+                "contain dashes)"
             )
         if len(parts) != 2 or not all(
             _ZONE_NAME_RE.fullmatch(p) for p in parts
         ):
             raise ParseError(
-                f"Format de connexion invalide : '{body}' "
-                "(attendu : '<zone1>-<zone2> [métadonnées]', "
-                "sans espace autour du tiret)"
+                f"Invalid connection format: '{body}' "
+                "(expected: '<zone1>-<zone2> [metadata]', "
+                "with no space around the dash)"
             )
         z1_name, z2_name = parts
 
         for name in (z1_name, z2_name):
             if name not in self.zones:
                 raise ParseError(
-                    f"Zone inconnue dans la connexion : '{name}' "
-                    "(elle doit être définie avant la connexion)."
+                    f"Unknown zone in connection: '{name}' "
+                    "(it must be defined before the connection)."
                 )
         if z1_name == z2_name:
             raise ParseError(
-                f"Une zone ne peut pas être reliée à elle-même : '{z1_name}'."
+                f"A zone cannot be connected to itself: '{z1_name}'."
             )
 
         key = (min(z1_name, z2_name), max(z1_name, z2_name))
         if key in self._connection_keys:
-            raise ParseError(f"Connexion en doublon : {z1_name}-{z2_name}.")
+            raise ParseError(f"Duplicate connection: {z1_name}-{z2_name}.")
 
         meta = self.parse_metadata(
-            meta_str, CONNECTION_METADATA_KEYS, "une connexion"
+            meta_str, CONNECTION_METADATA_KEYS, "a connection"
         )
         max_link = self._parse_positive_int(
             meta.get("max_link_capacity", "1"), "max_link_capacity"
@@ -260,21 +260,23 @@ class Parser:
         start = text.find("[")
         if start == -1:
             if "]" in text:
-                raise ParseError(f"Crochet fermant ']' sans '[' : '{text}'")
+                raise ParseError(
+                    f"Closing bracket ']' without '[': '{text}'"
+                )
             return text, ""
 
         body = text[:start].strip()
         block = text[start:]
         if not block.endswith("]"):
             raise ParseError(
-                f"Bloc de métadonnées mal formé : '{block}' (crochet "
-                "fermant manquant, ou texte après ']')"
+                f"Malformed metadata block: '{block}' (missing closing "
+                "bracket, or text after ']')"
             )
         inner = block[1:-1]
         if "[" in inner or "]" in inner:
             raise ParseError(
-                f"Un seul bloc '[...]' est autorisé, sans crochets "
-                f"imbriqués : '{block}'"
+                f"Only one '[...]' block is allowed, with no nested "
+                f"brackets: '{block}'"
             )
         return body, inner
 
@@ -300,18 +302,19 @@ class Parser:
             key, sep, value = token.partition("=")
             if not sep or not key or not value or "=" in value:
                 raise ParseError(
-                    f"Métadonnée invalide : '{token}' "
-                    "(format attendu : clé=valeur, sans espace autour de '=')"
+                    f"Invalid metadata: '{token}' "
+                    "(expected format: key=value, with no space "
+                    "around '=')"
                 )
             if key not in ALL_METADATA_KEYS:
-                raise ParseError(f"Métadonnée non reconnue : '{key}'.")
+                raise ParseError(f"Unrecognized metadata: '{key}'.")
             if key not in allowed_keys:
                 raise ParseError(
-                    f"La métadonnée '{key}' n'est pas valide pour {context} "
-                    f"(autorisées : {', '.join(sorted(allowed_keys))})."
+                    f"Metadata '{key}' is not valid for {context} "
+                    f"(allowed: {', '.join(sorted(allowed_keys))})."
                 )
             if key in meta:
-                raise ParseError(f"Métadonnée en doublon : '{key}'.")
+                raise ParseError(f"Duplicate metadata: '{key}'.")
             meta[key] = value
         return meta
 
@@ -331,8 +334,8 @@ class Parser:
         """
         if not _POSITIVE_INT_RE.fullmatch(value) or int(value) <= 0:
             raise ParseError(
-                f"{label} invalide : '{value}' "
-                "(doit être un entier strictement positif)."
+                f"Invalid {label}: '{value}' "
+                "(must be a strictly positive integer)."
             )
         return int(value)
 
@@ -353,7 +356,7 @@ class Parser:
         """
         if not _INT_RE.fullmatch(value):
             raise ParseError(
-                f"Coordonnée {axis} invalide : '{value}' (entier attendu)."
+                f"Invalid {axis} coordinate: '{value}' (integer expected)."
             )
         return int(value)
 
@@ -376,7 +379,7 @@ class Parser:
         except ValueError:
             valid = ", ".join(t.value for t in ZoneType)
             raise ParseError(
-                f"Type de zone invalide : '{value}' (attendu : {valid})."
+                f"Invalid zone type: '{value}' (expected: {valid})."
             ) from None
 
     def _validate_map(self) -> None:
@@ -389,18 +392,18 @@ class Parser:
         """
         if self.nb_drones == 0:
             raise ParseError(
-                "Le fichier doit définir 'nb_drones: <entier positif>' "
-                "en première ligne utile."
+                "The file must define 'nb_drones: <positive integer>' "
+                "as its first meaningful line."
             )
         if self.start_zone is None:
-            raise ParseError("La carte doit définir un 'start_hub:'.")
+            raise ParseError("The map must define a 'start_hub:'.")
         if self.end_zone is None:
-            raise ParseError("La carte doit définir un 'end_hub:'.")
+            raise ParseError("The map must define an 'end_hub:'.")
         if not self._is_reachable(self.start_zone, self.end_zone):
             raise ParseError(
-                f"Aucun chemin entre '{self.start_zone.name}' et "
-                f"'{self.end_zone.name}' (carte non connectée ou chemin "
-                "coupé par des zones 'blocked')."
+                f"No path between '{self.start_zone.name}' and "
+                f"'{self.end_zone.name}' (map not connected, or path cut "
+                "by 'blocked' zones)."
             )
 
     def _is_reachable(self, start: Zone, end: Zone) -> bool:

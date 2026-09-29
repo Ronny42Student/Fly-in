@@ -10,7 +10,7 @@ $(NAME):
 	@echo "#!/bin/bash" > $(NAME)
 	@echo "$(BIN_VENV)/$(PYTHON) main.py \"\$$@\"" >> $(NAME)
 	@chmod +x $(NAME)
-	@echo "[+] Script de lancement '$(NAME)' créé avec succès."
+	@echo "[+] Launcher script '$(NAME)' created successfully."
 
 install:
 	$(PYTHON) -m venv $(VENV)
@@ -39,12 +39,12 @@ test: all
 
 clean:
 	@rm -rf __pycache__ */__pycache__ .mypy_cache temp_output.log .pytest_cache
-	@echo "[+] Fichiers de cache supprimés."
+	@echo "[+] Cache files removed."
 
 fclean: clean
 	@rm -rf $(VENV)
 	@rm -f $(NAME)
-	@echo "[+] Environnement virtuel et exécutable $(NAME) supprimés."
+	@echo "[+] Virtual environment and $(NAME) executable removed."
 
 re: fclean all
 

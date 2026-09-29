@@ -48,7 +48,7 @@ class Visualizer:
         pygame.init()
 
         if not self.zones:
-            print("Aucune zone à afficher.")
+            print("No zone to display.")
             return
 
         zone_colors = self._resolve_zone_colors()
@@ -144,7 +144,7 @@ class Visualizer:
             try:
                 resolved[zone.name] = DesignPattern.color_to_rgb(zone.color)
             except ValueError as e:
-                raise ValueError(f"Zone '{zone.name}' : {e}") from e
+                raise ValueError(f"Zone '{zone.name}': {e}") from e
         return resolved
 
     @staticmethod
@@ -173,8 +173,7 @@ class Visualizer:
             return pygame.transform.scale(raw_bg, (cfg.width, cfg.height))
         except pygame.error as e:
             print(
-                f"Avertissement : impossible de charger le background "
-                f"({e})"
+                f"Warning: unable to load the background ({e})"
             )
             return None
 
@@ -198,8 +197,8 @@ class Visualizer:
             max_turns: Total number of turns in the simulation.
             is_paused: Whether the animation is currently paused.
         """
-        status_str = "PAUSE" if is_paused else "SIMULATION EN COURS"
-        title_str = f"Tour : {current_turn} / {max_turns}  ({status_str})"
+        status_str = "PAUSED" if is_paused else "SIMULATION RUNNING"
+        title_str = f"Turn: {current_turn} / {max_turns}  ({status_str})"
         title_w = title_font.size(title_str)[0]
         DesignPattern.draw_text_with_shadow(
             screen, title_str, title_font, DesignPattern.TEXT_COLOR,
@@ -207,8 +206,8 @@ class Visualizer:
         )
 
         help_str = (
-            "[ESPACE] Mettre en Pause/Lecture "
-            "| [FLÈCHE DROITE] Forcer le tour suivant"
+            "[SPACE] Pause/Resume "
+            "| [RIGHT ARROW] Force next turn"
         )
         help_w = font.size(help_str)[0]
         DesignPattern.draw_text_with_shadow(
