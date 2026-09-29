@@ -74,8 +74,8 @@ class SpaceTimeRouter:
 
             if not path:
                 raise ValueError(
-                    "Impossible de trouver un itinéraire pour le "
-                    f"drone {drone_id}. Bloqué par les contraintes de trafic."
+                    f"Unable to find a route for drone {drone_id}. "
+                    "Blocked by traffic constraints."
                 )
 
             all_paths[drone_id] = path
