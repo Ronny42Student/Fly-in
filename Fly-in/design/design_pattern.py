@@ -71,7 +71,7 @@ class DesignPattern:
         try:
             color = pygame.Color(name)
         except (ValueError, TypeError):
-            raise ValueError(f"Invalid color: '{name}'") from None
+            raise ValueError(f"Couleur invalide : '{name}'") from None
         return (color.r, color.g, color.b)
 
     @staticmethod

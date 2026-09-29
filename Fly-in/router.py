@@ -74,8 +74,8 @@ class SpaceTimeRouter:
 
             if not path:
                 raise ValueError(
-                    f"Unable to find a route for drone {drone_id}. "
-                    "Blocked by traffic constraints."
+                    "Impossible de trouver un itinéraire pour le "
+                    f"drone {drone_id}. Bloqué par les contraintes de trafic."
                 )
 
             all_paths[drone_id] = path
@@ -105,7 +105,11 @@ class SpaceTimeRouter:
             None if no valid path exists within the turn horizon.
         """
         counter = itertools.count()
-
+        # Heap entries: (arrival_turn, priority_score, tie_breaker,
+        # current_zone_name, path_so_far). Sorting on arrival_turn first
+        # guarantees the fewest-turns path is popped first; priority_score
+        # only ever breaks ties between paths that take the same number
+        # of turns.
         queue: List[Tuple[int, int, int, str, List[PathStep]]] = []
         heapq.heappush(
             queue,

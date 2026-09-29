@@ -1,395 +1,434 @@
-"""Pygame-based real-time visualizer for the Fly-in simulation."""
+"""Line-based parser and validator for the Fly-in map file format."""
 
-import math
-import os
-import sys
-from typing import Dict, List, Optional, Tuple
-
-import pygame
+import re
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from design.design_pattern import DesignPattern
-from models import Connection, Zone
-from window_config import WindowConfig
+from models import Connection, Zone, ZoneType
 
-PathStep = Tuple[str, int, bool]
+HUB_METADATA_KEYS = {"zone", "color", "max_drones"}
+CONNECTION_METADATA_KEYS = {"max_link_capacity"}
+ALL_METADATA_KEYS = HUB_METADATA_KEYS | CONNECTION_METADATA_KEYS
+
+HUB_PREFIXES = ("start_hub", "end_hub", "hub")
+
+_INT_RE = re.compile(r"-?[0-9]+")
+_POSITIVE_INT_RE = re.compile(r"[0-9]+")
+_ZONE_NAME_RE = re.compile(r"[^\s\-]+")
 
 
-class Visualizer:
-    """Runs the interactive pygame animation of a computed simulation.
+class ParseError(ValueError):
+    """Syntax or validation error found in a map file."""
 
-    All drones animate simultaneously, in line with the actual
-    simulation rules, with interpolated movement between zones,
-    active-link highlighting, and pause/step playback controls.
+
+class Parser:
+    """Parses a Fly-in map file and validates its overall consistency.
+
+    Attributes:
+        zones: Map zones, indexed by name.
+        connections: Bidirectional connections between zones.
+        nb_drones: Number of drones (0 until defined).
+        start_zone: Starting zone (None until defined).
+        end_zone: Destination zone (None until defined).
     """
 
-    BG_IMAGE_PATH: str = "assets/background.jpg"
-    ANIMATION_SPEED: float = 0.025
+    def __init__(self) -> None:
+        """Initialize an empty parser."""
+        self.zones: Dict[str, Zone] = {}
+        self.connections: List[Connection] = []
+        self.nb_drones: int = 0
+        self.start_zone: Optional[Zone] = None
+        self.end_zone: Optional[Zone] = None
+        self._connection_keys: Set[Tuple[str, str]] = set()
 
-    def __init__(
-        self,
-        zones: Dict[str, Zone],
-        connections: List[Connection],
-        routes: Dict[str, List[PathStep]],
-    ) -> None:
-        """Store the map and computed routes to animate.
+    def parse_file(self, file_path: str) -> None:
+        """Read and validate a map file.
 
         Args:
-            zones: Map zones, indexed by name.
-            connections: Bidirectional connections between zones.
-            routes: Per-drone path, as returned by SpaceTimeRouter.
-        """
-        self.zones = zones
-        self.connections = connections
-        self.routes = routes
-
-    def run(self) -> None:
-        """Open the pygame window and run the animation loop until the
-        user closes it."""
-        pygame.init()
-
-        if not self.zones:
-            print("No zones to display.")
-            return
-
-        zone_colors = self._resolve_zone_colors()
-        cfg = WindowConfig(self.zones)
-        screen = pygame.display.set_mode((cfg.width, cfg.height))
-        pygame.display.set_caption("Fly-in: Advanced Space-Time Visualizer")
-        clock = pygame.time.Clock()
-
-        font = pygame.font.SysFont("Ubuntu", 13, bold=True)
-        title_font = pygame.font.SysFont("Ubuntu", 22, bold=True)
-
-        bg_image = self._load_background(cfg)
-
-        zone_routes: Dict[str, List[Tuple[str, int]]] = {
-            drone_id: self._zone_steps(path)
-            for drone_id, path in self.routes.items()
-        }
-
-        max_turns = (
-            max(tour for path in zone_routes.values() for _, tour in path)
-            if zone_routes else 0
-        )
-
-        current_turn = 0
-        is_paused = False
-        progress = 0.0
-
-        try:
-            while True:
-                clock.tick(60)
-
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        sys.exit()
-                    elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_SPACE:
-                            is_paused = not is_paused
-                        elif event.key in (pygame.K_RIGHT, pygame.K_p):
-                            if current_turn < max_turns:
-                                current_turn += 1
-                                progress = 0.0
-
-                if not is_paused and current_turn < max_turns:
-                    progress += self.ANIMATION_SPEED
-                    if progress >= 1.0:
-                        progress = 0.0
-                        current_turn += 1
-                elif current_turn >= max_turns:
-                    progress = 1.0
-
-                if bg_image is not None:
-                    screen.blit(bg_image, (0, 0))
-                else:
-                    screen.fill(DesignPattern.BG_COLOR)
-
-                self._draw_hud(
-                    screen, font, title_font, current_turn, max_turns,
-                    is_paused,
-                )
-
-                positions, active_links, zone_counts = self._compute_frame(
-                    cfg, zone_routes, current_turn, progress
-                )
-
-                self._draw_connections(screen, cfg, font, active_links)
-                self._draw_zones(screen, cfg, font, zone_colors, zone_counts)
-                self._draw_drones(screen, font, positions, progress)
-
-                pygame.display.flip()
-        finally:
-            pygame.quit()
-
-    def _resolve_zone_colors(self) -> Dict[str, Tuple[int, int, int]]:
-        """Convert zone colors to RGB before opening the window.
-
-        Zones with no color (or the 'rainbow' keyword) have no entry:
-        they are left unfilled (transparent) or drawn separately.
-
-        Returns:
-            Dictionary mapping zone name to RGB color.
+            file_path: Path to the map file.
 
         Raises:
-            ValueError: If a zone has an unknown color.
+            ParseError: If the file cannot be read, or the map is
+                invalid.
         """
-        resolved: Dict[str, Tuple[int, int, int]] = {}
-        for zone in self.zones.values():
-            if (
-                zone.color is None
-                or zone.color == DesignPattern.RAINBOW_KEYWORD
-            ):
+        try:
+            with open(file_path, "r", encoding="utf-8-sig") as f:
+                content = f.read()
+        except UnicodeDecodeError as e:
+            raise ParseError(
+                f"Le fichier '{file_path}' n'est pas en UTF-8 valide."
+            ) from e
+        except OSError as e:
+            raise ParseError(
+                f"Impossible de lire '{file_path}' : {e.strerror}"
+            ) from e
+        self.parse_lines(content.split("\n"))
+
+    def parse_lines(self, lines: Iterable[str]) -> None:
+        """Parse a map's lines, then validate the map as a whole.
+
+        Args:
+            lines: The file's lines (no constraint on line endings).
+
+        Raises:
+            ParseError: If a line is invalid (with its line number), or
+                the map is inconsistent once fully parsed.
+        """
+        for line_num, raw_line in enumerate(lines, start=1):
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
                 continue
             try:
-                resolved[zone.name] = DesignPattern.color_to_rgb(zone.color)
+                self._parse_line(line)
+            except ParseError as e:
+                raise ParseError(f"[Ligne {line_num}] {e}") from e
+        self._validate_map()
+
+    def _parse_line(self, line: str) -> None:
+        """Route a single line to the right handler based on its
+        keyword.
+
+        Args:
+            line: The stripped, non-empty, non-comment line to parse.
+        """
+        keyword, sep, rest = line.partition(":")
+        keyword = keyword.strip()
+        if not sep:
+            raise ParseError(
+                f"Format de ligne non reconnu : '{line}' "
+                "(attendu 'mot-clé: valeur')"
+            )
+
+        if keyword == "nb_drones":
+            self._parse_nb_drones(rest)
+            return
+
+        if keyword not in HUB_PREFIXES and keyword != "connection":
+            raise ParseError(
+                f"Mot-clé non reconnu : '{keyword}' (attendu : nb_drones, "
+                "start_hub, end_hub, hub ou connection)"
+            )
+        if self.nb_drones == 0:
+            raise ParseError(
+                "La première ligne utile doit être "
+                "'nb_drones: <entier positif>'."
+            )
+
+        if keyword == "connection":
+            self._parse_connection(rest)
+        else:
+            self._parse_hub(keyword, rest)
+
+    def _parse_nb_drones(self, value: str) -> None:
+        """Handle 'nb_drones: <positive integer>' (allowed only once).
+
+        Args:
+            value: Text found after the ':' on the nb_drones line.
+        """
+        if self.nb_drones != 0:
+            raise ParseError("'nb_drones' est défini plusieurs fois.")
+        self.nb_drones = self._parse_positive_int(value.strip(), "nb_drones")
+
+    def _parse_hub(self, prefix: str, rest: str) -> None:
+        """Handle a start_hub / end_hub / hub line.
+
+        Args:
+            prefix: 'start_hub', 'end_hub' or 'hub'.
+            rest: Text found after the ':'.
+        """
+        is_start = prefix == "start_hub"
+        is_end = prefix == "end_hub"
+
+        body, meta_str = self._split_metadata(rest)
+        tokens = body.split()
+        if len(tokens) != 3:
+            raise ParseError(
+                f"Format de hub invalide : '{body}' (attendu : "
+                "'<nom> <x> <y> [métadonnées]', le nom ne doit contenir "
+                "ni espace ni tiret)"
+            )
+        name, x_str, y_str = tokens
+
+        if "-" in name:
+            raise ParseError(f"Le nom '{name}' ne doit pas contenir de tiret.")
+        if name in self.zones:
+            raise ParseError(f"Zone en doublon : '{name}'.")
+        if is_start and self.start_zone is not None:
+            raise ParseError("'start_hub' est défini plusieurs fois.")
+        if is_end and self.end_zone is not None:
+            raise ParseError("'end_hub' est défini plusieurs fois.")
+
+        x = self._parse_coordinate(x_str, "x")
+        y = self._parse_coordinate(y_str, "y")
+
+        meta = self.parse_metadata(meta_str, HUB_METADATA_KEYS, "un hub")
+
+        zone_type = self._parse_zone_type(meta.get("zone", "normal"))
+        if (is_start or is_end) and zone_type == ZoneType.BLOCKED:
+            raise ParseError(
+                f"Le hub '{name}' ({prefix}) ne peut pas être 'blocked'."
+            )
+
+        if is_start or is_end:
+            max_drones = self.nb_drones
+        else:
+            max_drones = self._parse_positive_int(
+                meta.get("max_drones", "1"), "max_drones"
+            )
+
+        color = meta.get("color")
+        if color is not None and color != DesignPattern.RAINBOW_KEYWORD:
+            try:
+                DesignPattern.color_to_rgb(color)
             except ValueError as e:
-                raise ValueError(f"Zone '{zone.name}' : {e}") from e
-        return resolved
+                raise ParseError(str(e)) from e
+
+        zone = Zone(name, x, y, zone_type, max_drones, color)
+        self.zones[name] = zone
+        if is_start:
+            self.start_zone = zone
+        elif is_end:
+            self.end_zone = zone
+
+    def _parse_connection(self, rest: str) -> None:
+        """Handle 'connection: <zone1>-<zone2> [max_link_capacity=N]'.
+
+        Args:
+            rest: Text found after the ':'.
+        """
+        body, meta_str = self._split_metadata(rest)
+
+        parts = body.split("-")
+        if len(parts) > 2:
+            raise ParseError(
+                f"Connexion invalide : '{body}' (les noms de zones ne "
+                "peuvent pas contenir de tiret)"
+            )
+        if len(parts) != 2 or not all(
+            _ZONE_NAME_RE.fullmatch(p) for p in parts
+        ):
+            raise ParseError(
+                f"Format de connexion invalide : '{body}' "
+                "(attendu : '<zone1>-<zone2> [métadonnées]', "
+                "sans espace autour du tiret)"
+            )
+        z1_name, z2_name = parts
+
+        for name in (z1_name, z2_name):
+            if name not in self.zones:
+                raise ParseError(
+                    f"Zone inconnue dans la connexion : '{name}' "
+                    "(elle doit être définie avant la connexion)."
+                )
+        if z1_name == z2_name:
+            raise ParseError(
+                f"Une zone ne peut pas être reliée à elle-même : '{z1_name}'."
+            )
+
+        key = (min(z1_name, z2_name), max(z1_name, z2_name))
+        if key in self._connection_keys:
+            raise ParseError(f"Connexion en doublon : {z1_name}-{z2_name}.")
+
+        meta = self.parse_metadata(
+            meta_str, CONNECTION_METADATA_KEYS, "une connexion"
+        )
+        max_link = self._parse_positive_int(
+            meta.get("max_link_capacity", "1"), "max_link_capacity"
+        )
+
+        self._connection_keys.add(key)
+        self.connections.append(
+            Connection(self.zones[z1_name], self.zones[z2_name], max_link)
+        )
 
     @staticmethod
-    def _zone_steps(path: List[PathStep]) -> List[Tuple[str, int]]:
-        """Extract only the zone steps of a path (skip connection/transit
-        steps)."""
-        return [
-            (label, tour) for label, tour, is_conn in path if not is_conn
-        ]
-
-    def _load_background(
-        self, cfg: WindowConfig
-    ) -> Optional[pygame.Surface]:
-        """Load and scale the optional background image.
+    def _split_metadata(text: str) -> Tuple[str, str]:
+        """Split a line's body from its optional '[...]' metadata block.
 
         Args:
-            cfg: The window configuration, for the target size.
+            text: Text found after the ':'.
 
         Returns:
-            The scaled background surface, or None if it is unavailable.
+            Tuple (body, bracket contents). The contents are an empty
+            string when there is no metadata block.
+
+        Raises:
+            ParseError: If brackets are missing, duplicated, nested, or
+                if text follows the closing bracket.
         """
-        if not os.path.isfile(self.BG_IMAGE_PATH):
-            return None
+        text = text.strip()
+        start = text.find("[")
+        if start == -1:
+            if "]" in text:
+                raise ParseError(f"Crochet fermant ']' sans '[' : '{text}'")
+            return text, ""
+
+        body = text[:start].strip()
+        block = text[start:]
+        if not block.endswith("]"):
+            raise ParseError(
+                f"Bloc de métadonnées mal formé : '{block}' (crochet "
+                "fermant manquant, ou texte après ']')"
+            )
+        inner = block[1:-1]
+        if "[" in inner or "]" in inner:
+            raise ParseError(
+                f"Un seul bloc '[...]' est autorisé, sans crochets "
+                f"imbriqués : '{block}'"
+            )
+        return body, inner
+
+    def parse_metadata(
+        self, meta_str: str, allowed_keys: Set[str], context: str
+    ) -> Dict[str, str]:
+        """Parse the contents of a 'key=value ...' metadata block.
+
+        Args:
+            meta_str: Contents between brackets (may be empty).
+            allowed_keys: Keys allowed for this kind of line.
+            context: Label for the kind of line, used in error messages.
+
+        Returns:
+            Dictionary key -> value (values stay as strings).
+
+        Raises:
+            ParseError: If a key is unknown, misplaced, duplicated, or
+                the syntax is otherwise invalid.
+        """
+        meta: Dict[str, str] = {}
+        for token in meta_str.split():
+            key, sep, value = token.partition("=")
+            if not sep or not key or not value or "=" in value:
+                raise ParseError(
+                    f"Métadonnée invalide : '{token}' "
+                    "(format attendu : clé=valeur, sans espace autour de '=')"
+                )
+            if key not in ALL_METADATA_KEYS:
+                raise ParseError(f"Métadonnée non reconnue : '{key}'.")
+            if key not in allowed_keys:
+                raise ParseError(
+                    f"La métadonnée '{key}' n'est pas valide pour {context} "
+                    f"(autorisées : {', '.join(sorted(allowed_keys))})."
+                )
+            if key in meta:
+                raise ParseError(f"Métadonnée en doublon : '{key}'.")
+            meta[key] = value
+        return meta
+
+    @staticmethod
+    def _parse_positive_int(value: str, label: str) -> int:
+        """Convert a string into a strictly positive integer.
+
+        Args:
+            value: String to convert.
+            label: Field name, used in the error message.
+
+        Returns:
+            The parsed integer.
+
+        Raises:
+            ParseError: If the value is not a strictly positive integer.
+        """
+        if not _POSITIVE_INT_RE.fullmatch(value) or int(value) <= 0:
+            raise ParseError(
+                f"{label} invalide : '{value}' "
+                "(doit être un entier strictement positif)."
+            )
+        return int(value)
+
+    @staticmethod
+    def _parse_coordinate(value: str, axis: str) -> int:
+        """Convert a coordinate into an integer (negative values
+        allowed).
+
+        Args:
+            value: String to convert.
+            axis: Axis name ('x' or 'y'), used in the error message.
+
+        Returns:
+            The parsed integer.
+
+        Raises:
+            ParseError: If the value is not a valid integer.
+        """
+        if not _INT_RE.fullmatch(value):
+            raise ParseError(
+                f"Coordonnée {axis} invalide : '{value}' (entier attendu)."
+            )
+        return int(value)
+
+    @staticmethod
+    def _parse_zone_type(value: str) -> ZoneType:
+        """Convert a string into a ZoneType.
+
+        Args:
+            value: String to convert.
+
+        Returns:
+            The matching ZoneType.
+
+        Raises:
+            ParseError: If the value is not one of the subject's zone
+                types.
+        """
         try:
-            raw_bg = pygame.image.load(self.BG_IMAGE_PATH).convert()
-            return pygame.transform.scale(raw_bg, (cfg.width, cfg.height))
-        except pygame.error as e:
-            print(
-                f"Warning: unable to load background image ({e})"
-            )
-            return None
+            return ZoneType(value)
+        except ValueError:
+            valid = ", ".join(t.value for t in ZoneType)
+            raise ParseError(
+                f"Type de zone invalide : '{value}' (attendu : {valid})."
+            ) from None
 
-    def _draw_hud(
-        self,
-        screen: pygame.Surface,
-        font: pygame.font.Font,
-        title_font: pygame.font.Font,
-        current_turn: int,
-        max_turns: int,
-        is_paused: bool,
-    ) -> None:
-        """Draw the turn counter, status, and help text at the top of
-        the screen.
+    def _validate_map(self) -> None:
+        """Check the map's overall consistency once every line has been
+        read.
 
-        Args:
-            screen: Target pygame surface.
-            font: Font used for the help text.
-            title_font: Font used for the title.
-            current_turn: The simulation turn currently displayed.
-            max_turns: Total number of turns in the simulation.
-            is_paused: Whether the animation is currently paused.
+        Raises:
+            ParseError: If nb_drones, start_hub or end_hub is missing,
+                or no path exists between the start and end zones.
         """
-        status_str = "PAUSED" if is_paused else "SIMULATION RUNNING"
-        title_str = f"Turn: {current_turn} / {max_turns}  ({status_str})"
-        title_w = title_font.size(title_str)[0]
-        DesignPattern.draw_text_with_shadow(
-            screen, title_str, title_font, DesignPattern.TEXT_COLOR,
-            (1400 + title_w // 2, 36),
-        )
+        if self.nb_drones == 0:
+            raise ParseError(
+                "Le fichier doit définir 'nb_drones: <entier positif>' "
+                "en première ligne utile."
+            )
+        if self.start_zone is None:
+            raise ParseError("La carte doit définir un 'start_hub:'.")
+        if self.end_zone is None:
+            raise ParseError("La carte doit définir un 'end_hub:'.")
+        if not self._is_reachable(self.start_zone, self.end_zone):
+            raise ParseError(
+                f"Aucun chemin entre '{self.start_zone.name}' et "
+                f"'{self.end_zone.name}' (carte non connectée ou chemin "
+                "coupé par des zones 'blocked')."
+            )
 
-        help_str = (
-            "[SPACE] Pause/Resume | [RIGHT ARROW] Advance to next turn"
-        )
-        help_w = font.size(help_str)[0]
-        DesignPattern.draw_text_with_shadow(
-            screen, help_str, font, DesignPattern.TEXT_COLOR,
-            (1400 + help_w // 2, 66),
-        )
-
-    def _compute_frame(
-        self,
-        cfg: WindowConfig,
-        zone_routes: Dict[str, List[Tuple[str, int]]],
-        current_turn: int,
-        progress: float,
-    ) -> Tuple[
-        Dict[str, Tuple[int, int]],
-        List[Tuple[str, str]],
-        Dict[str, int],
-    ]:
-        """Compute each drone's interpolated screen position for this
-        frame, along with the currently active links and zone
-        occupancy.
+    def _is_reachable(self, start: Zone, end: Zone) -> bool:
+        """Run a depth-first search, ignoring 'blocked' zones.
 
         Args:
-            cfg: The window configuration, for coordinate conversion.
-            zone_routes: Each drone's zone-only path.
-            current_turn: The simulation turn currently displayed.
-            progress: Interpolation progress (0.0 to 1.0) toward the
-                next turn.
+            start: Starting zone.
+            end: Destination zone.
 
         Returns:
-            Tuple (drone screen positions, active links, zone occupancy
-            counts).
+            True if at least one path exists from start to end.
         """
-        positions: Dict[str, Tuple[int, int]] = {}
-        active_links: List[Tuple[str, str]] = []
-        zone_counts = {z: 0 for z in self.zones}
-
-        for drone_id, path in zone_routes.items():
-            pos_now = path[0][0]
-            pos_next = path[0][0]
-
-            for zone_name, tour in path:
-                if tour <= current_turn:
-                    pos_now = zone_name
-                if tour <= current_turn + 1:
-                    pos_next = zone_name
-
-            pt_now = cfg.to_screen_coords(
-                self.zones[pos_now].x, self.zones[pos_now].y
-            )
-            pt_next = cfg.to_screen_coords(
-                self.zones[pos_next].x, self.zones[pos_next].y
-            )
-
-            interp_x = int(pt_now[0] + (pt_next[0] - pt_now[0]) * progress)
-            interp_y = int(pt_now[1] + (pt_next[1] - pt_now[1]) * progress)
-            positions[drone_id] = (interp_x, interp_y)
-
-            if pos_now != pos_next:
-                active_links.append((pos_now, pos_next))
-
-            zone_counts[pos_now] += 1
-
-        return positions, active_links, zone_counts
-
-    def _draw_connections(
-        self,
-        screen: pygame.Surface,
-        cfg: WindowConfig,
-        font: pygame.font.Font,
-        active_links: List[Tuple[str, str]],
-    ) -> None:
-        """Draw every connection line, highlighting active ones and
-        labeling each with its current traffic and capacity.
-
-        Args:
-            screen: Target pygame surface.
-            cfg: The window configuration, for coordinate conversion.
-            font: Font used for the capacity label.
-            active_links: Zone-name pairs currently being crossed.
-        """
+        neighbors: Dict[str, List[str]] = {name: [] for name in self.zones}
         for conn in self.connections:
-            pt1 = cfg.to_screen_coords(conn.zone1.x, conn.zone1.y)
-            pt2 = cfg.to_screen_coords(conn.zone2.x, conn.zone2.y)
+            neighbors[conn.zone1.name].append(conn.zone2.name)
+            neighbors[conn.zone2.name].append(conn.zone1.name)
 
-            is_active = any(
-                (a == conn.zone1.name and b == conn.zone2.name)
-                or (b == conn.zone1.name and a == conn.zone2.name)
-                for a, b in active_links
-            )
-
-            color = (
-                DesignPattern.ACTIVE_LINE_COLOR if is_active
-                else DesignPattern.LINE_COLOR
-            )
-            width_line = 3 if is_active else 1
-            pygame.draw.line(screen, color, pt1, pt2, width_line)
-
-            mid_x = (pt1[0] + pt2[0]) // 2
-            mid_y = (pt1[1] + pt2[1]) // 2
-
-            nb = sum(
-                1 for a, b in active_links
-                if (a == conn.zone1.name and b == conn.zone2.name)
-                or (b == conn.zone1.name and a == conn.zone2.name)
-            )
-
-            cap_str = f"{nb}/cap:{conn.max_link_capacity}"
-            cap_w = font.size(cap_str)[0]
-
-            DesignPattern.draw_text_with_shadow_vertical(
-                screen, cap_str, font, DesignPattern.TEXT_COLOR,
-                (mid_x + 6 + cap_w // 2, mid_y - 8),
-            )
-
-    def _draw_zones(
-        self,
-        screen: pygame.Surface,
-        cfg: WindowConfig,
-        font: pygame.font.Font,
-        zone_colors: Dict[str, Tuple[int, int, int]],
-        zone_counts: Dict[str, int],
-    ) -> None:
-        """Draw every zone as a colored circle, labeled with its name
-        and current/maximum occupancy.
-
-        Args:
-            screen: Target pygame surface.
-            cfg: The window configuration, for coordinate conversion.
-            font: Font used for the zone label.
-            zone_colors: RGB color for each zone that has one.
-            zone_counts: Current number of drones in each zone.
-        """
-        for zone in self.zones.values():
-            pos = cfg.to_screen_coords(zone.x, zone.y)
-
-            if zone.color == DesignPattern.RAINBOW_KEYWORD:
-                DesignPattern.draw_rainbow_circle(screen, pos, 22)
-            elif zone.name in zone_colors:
-                pygame.draw.circle(screen, zone_colors[zone.name], pos, 22)
-
-            pygame.draw.circle(screen, (255, 255, 255), pos, 22, 2)
-
-            info_str = (
-                f"{zone.name} "
-                f"[{zone_counts[zone.name]}"
-                f"/max:{zone.max_drones}]"
-            )
-
-            DesignPattern.draw_text_with_shadow_vertical(
-                screen, info_str, font, DesignPattern.TEXT_COLOR,
-                (pos[0], pos[1] - 36),
-            )
-
-    def _draw_drones(
-        self,
-        screen: pygame.Surface,
-        font: pygame.font.Font,
-        positions: Dict[str, Tuple[int, int]],
-        progress: float,
-    ) -> None:
-        """Draw every drone icon, spreading out drones that would
-        otherwise overlap so their identifiers stay readable.
-
-        Args:
-            screen: Target pygame surface.
-            font: Font used for the drone identifier.
-            positions: Each drone's interpolated screen position.
-            progress: Interpolation progress (0.0 to 1.0); drones are
-                only spread apart near the start or end of a turn.
-        """
-        drones_at_same_node: Dict[Tuple[int, int], int] = {}
-        for drone_id, pos in positions.items():
-            if progress == 0.0 or progress >= 0.98:
-                count = drones_at_same_node.get(pos, 0)
-                drones_at_same_node[pos] = count + 1
-                if count > 0:
-                    angle = count * (2 * math.pi / 4)
-                    pos = (
-                        int(pos[0] + math.cos(angle) * 15),
-                        int(pos[1] + math.sin(angle) * 15),
-                    )
-
-            DesignPattern.draw_drone_icon(
-                screen, pos, DesignPattern.DRONE_COLOR, drone_id, font
-            )
+        seen: Set[str] = {start.name}
+        stack: List[str] = [start.name]
+        while stack:
+            current = stack.pop()
+            if current == end.name:
+                return True
+            for other in neighbors[current]:
+                if other in seen:
+                    continue
+                if self.zones[other].zone_type == ZoneType.BLOCKED:
+                    continue
+                seen.add(other)
+                stack.append(other)
+        return False
