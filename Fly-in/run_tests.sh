@@ -12,8 +12,6 @@ echo -e "${CYAN}====================================================${NC}"
 echo -e "${CYAN}    FLY-IN AUTOMATED TEST SUITE VALIDATION          ${NC}"
 echo -e "${CYAN}====================================================${NC}"
 
-# Usage: run_test <category> <map file> <max turns target> <description>
-# Targets come from the subject (VII.7 Performance Benchmarks).
 run_test() {
     local category=$1
     local map_name=$2
@@ -27,7 +25,6 @@ run_test() {
         return
     fi
 
-    # No --visual here: the pygame window would block the test suite.
     ./fly-in "${MAPS_DIR}/${map_name}" > temp_output.log 2>&1
 
     if [ $? -eq 0 ]; then

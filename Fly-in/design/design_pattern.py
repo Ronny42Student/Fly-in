@@ -7,10 +7,9 @@ from typing import Dict, List, Optional, Tuple
 
 from models import ZoneType
 
-# Hide pygame's start-up banner: it would pollute the simulation output.
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 
-import pygame  # noqa: E402
+import pygame
 
 
 class DesignPattern:
