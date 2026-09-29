@@ -7,7 +7,8 @@ from typing import Dict, List, Optional, Tuple
 
 from models import ZoneType
 
-os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+if "PYGAME_HIDE_SUPPORT_PROMPT" not in os.environ:
+    os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 import pygame
 
