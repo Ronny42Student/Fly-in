@@ -1,12 +1,15 @@
 """Colors and pygame drawing helpers shared by the parser and the
 visualizer."""
 
-import pygame
 import math
 import os
 from typing import Dict, List, Optional, Tuple
 
 from models import ZoneType
+
+os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
+
+import pygame
 
 
 class DesignPattern:
