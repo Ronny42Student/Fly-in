@@ -40,6 +40,7 @@ class Parser:
         self.start_zone: Optional[Zone] = None
         self.end_zone: Optional[Zone] = None
         self._connection_keys: Set[Tuple[str, str]] = set()
+        self._positions: Dict[Tuple[int, int], str] = {}
 
     def parse_file(self, file_path: str) -> None:
         """Read and validate a map file.
@@ -172,6 +173,11 @@ class Parser:
 
         x = self._parse_coordinate(x_str, "x")
         y = self._parse_coordinate(y_str, "y")
+        if (x, y) in self._positions:
+            raise ParseError(
+                f"Duplicate coordinates ({x}, {y}): zone '{name}' is at "
+                f"the same position as zone '{self._positions[(x, y)]}'."
+            )
 
         meta = self.parse_metadata(meta_str, HUB_METADATA_KEYS, "a hub")
 
@@ -197,6 +203,7 @@ class Parser:
 
         zone = Zone(name, x, y, zone_type, max_drones, color)
         self.zones[name] = zone
+        self._positions[(x, y)] = name
         if is_start:
             self.start_zone = zone
         elif is_end:
