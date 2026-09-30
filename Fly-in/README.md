@@ -1,799 +1,380 @@
 *This project has been created as part of the 42 curriculum by nrajaoar.*
 
-# Fly-in — Multi-Drone Space-Time Routing Simulator
-
-## Table of Contents
-
-- [Description](#description)
-- [Features](#features)
-- [Project Structure](#project-structure)
-- [Instructions](#instructions)
-- [Map File Format](#map-file-format-quick-reminder)
-- [Algorithm](#algorithm)
-  - [Overview](#overview)
-  - [Why a Space-Time Graph?](#why-a-space-time-graph)
-  - [How a Single Drone Finds Its Path](#how-a-single-drone-finds-its-path--step-by-step)
-  - [Coordinating Multiple Drones — Prioritized Planning](#coordinating-multiple-drones--prioritized-planning)
-  - [Worked Example](#worked-example)
-  - [Complexity Analysis](#complexity-analysis)
-  - [Why This Algorithm Is Efficient](#why-this-algorithm-is-efficient)
-  - [Limitations](#limitations)
-- [Key Functions Explained](#key-functions-explained)
-- [Visual Representation](#visual-representation)
-- [Object-Oriented Design](#object-oriented-design)
-- [Resources](#resources)
-
----
+# Fly-in — Drones are interesting.
 
 ## Description
 
-Fly-in is a drone-fleet routing simulator. Given a map of interconnected **zones**
-(a graph) and a fleet of `N` drones, the program computes, for every drone, the
-fastest valid path from a single start zone to a single end zone — while
-respecting per-zone drone capacity, per-connection traffic capacity, variable
-zone movement costs, and truly simultaneous multi-drone movement.
+Fly-in routes a fleet of `N` drones from one **start zone** to one **end zone** of a graph of zones, in as few simulation turns as possible, while respecting:
 
-The goal is not just "find a path" but "find a *schedule*": since every drone
-shares the same map at the same time, the interesting part of the problem is
-deciding who moves when, so that drones don't collide, overflow a zone's
-capacity, or exceed a connection's traffic limit.
+- zone capacity (`max_drones`) and connection capacity (`max_link_capacity`);
+- zone types: `normal` (1 turn), `priority` (1 turn, preferred), `restricted` (2 turns, no waiting in flight), `blocked` (forbidden);
+- simultaneous movement of all drones.
 
-The simulation exposes two ways to inspect the result:
-- A structured, turn-by-turn text trace printed to the terminal, in the exact
-  format required by the subject (`D<ID>-<zone>` per moving drone, per turn).
-- An optional real-time animated graphical visualization built with `pygame`
-  (`--visual` flag), showing every drone moving simultaneously across the
-  network, with pause/step playback controls.
+The program parses a map file, computes a conflict-free schedule, prints it turn by turn in the format required by the subject, and can animate it with `pygame` (`--visual`).
 
-The whole project is implemented from scratch, without any graph library
-(forbidden by the subject), is completely typesafe (`flake8` + `mypy`), and
-is completely object-oriented — every responsibility below is a class, not a
-loose collection of module-level functions:
-
-| File | Class | Responsibility |
-|---|---|---|
-| `parser.py` | `Parser` | Reads and validates the map file, builds `Zone`/`Connection` objects |
-| `router.py` | `SpaceTimeRouter` | The pathfinding engine — computes a conflict-free schedule for every drone |
-| `models.py` | `Zone`, `Connection`, `ZoneType` | The data model |
-| `main.py` | `Simulation` | Entry point: argument handling, orchestration, text output |
-| `window_config.py` | `WindowConfig` | Computes an appropriate `pygame` window size and coordinate mapping |
-| `visualizer.py` | `Visualizer` | The `pygame` animation loop |
-| `design/design_pattern.py` | `DesignPattern` | Colors, color parsing, drawing helpers, and the drone icon |
-
-## Features
-
-- Custom line-based parser with clear, line-numbered error messages, and
-  strict metadata validation (unknown keys, duplicate keys, malformed
-  `key=value` pairs, nested brackets, non-positive capacities, and unknown
-  color names are all rejected rather than silently ignored).
-- Four zone types (`normal`, `blocked`, `restricted`, `priority`), each with its
-  own movement rules.
-- Per-zone drone capacity (`max_drones`) and per-connection traffic capacity
-  (`max_link_capacity`).
-- Sequential multi-drone routing that keeps every drone's path conflict-free
-  with every drone planned before it, minimizing total simulation turns
-  first, with `priority` zones used only as a tie-breaker.
-- Turn-by-turn text output matching the subject's required format.
-- Optional real-time `pygame` visualization with interpolated drone movement,
-  active-link highlighting, and playback controls.
-- Fully typed, fully object-oriented codebase (`mypy`-checked) and
-  `flake8`-compliant, with English docstrings throughout.
-- A `Makefile` automating install, run, debug, lint, test, and clean workflows.
-
-## Project Structure
-
-```text
-.
-├── Makefile
-├── README.md
-├── main.py                    # Entry point (Simulation class): parses args, drives the pipeline
-├── parser.py                  # Map file parser (Parser class)
-├── router.py                  # Space-time pathfinding engine (SpaceTimeRouter class)
-├── models.py                  # Zone, Connection, ZoneType
-├── window_config.py           # Dynamic pygame window sizing (WindowConfig class)
-├── visualizer.py               # Pygame animation loop (Visualizer class)
-├── design/
-│   ├── __init__.py            # Marks design/ as an importable Python package
-│   └── design_pattern.py      # DesignPattern class: drawing helpers, colors, drone icon
-├── assets/
-│   ├── background.jpg         # Optional visualizer background
-│   └── drone.png              # Optional drone icon
-└── maps/                      # Map files (.txt), one per test scenario
-```
-
-`design/__init__.py` is intentionally minimal — its only role is to tell Python
-that `design/` is a package, which is what makes
-`from design.design_pattern import DesignPattern` (used in `visualizer.py` and
-`parser.py`) work at all.
+Constraints of the subject: no graph library, fully typed (`flake8` + `mypy`), fully object-oriented.
 
 ## Instructions
 
-### Requirements
+**Requirements:** Python 3.10+.
 
-- Python 3.10 or later
-- `pip` (used inside a virtual environment created by `make install`)
-
-### Setup
-
-```bash
-make install
-```
-
-Creates a local virtual environment (`venv/`) and installs `pygame`, `flake8`,
-and `mypy` into it.
-
-### Running the simulation
-
-```bash
-make run
-```
-
-Builds the `fly-in` launcher script and runs it against the default demo map
-(`maps/01_linear_path.txt`) with the graphical visualizer enabled.
-
-To run a specific map, or without the visualizer:
-
-```bash
-./fly-in maps/01_linear_path.txt            # text output only
-./fly-in maps/01_linear_path.txt --visual   # text output + pygame window
-```
-
-**Example input** (`maps/01_linear_path.txt`, a minimal 2-drone linear path):
-
-```text
-nb_drones: 2
-
-start_hub: base 0 0 [color=green]
-end_hub: goal 2 0 [color=yellow]
-hub: mid 1 0 [max_drones=1]
-
-connection: base-mid
-connection: mid-goal
-```
-
-**Expected output** (text trace printed to the terminal):
-
-```text
-D1-mid
-D1-goal D2-mid
-D2-goal
-```
-
-(D2 waits one turn at `base` while D1 clears `mid`; since it does not move,
-it is correctly omitted from the first line, per VII.5.)
-
-While the `pygame` window is open:
-
-| Key | Action |
+| Command | What it does |
 |---|---|
-| `Space` | Pause / resume the animation |
-| `→` or `P` | Step forward one simulation turn manually |
-
-### Debugging
-
-```bash
-make debug
-```
-
-Runs `main.py` under Python's built-in debugger (`pdb`), paused at the very
-first line. Useful commands once inside `pdb`:
-
-| Command | Effect |
-|---|---|
-| `n` | Execute the next line (step over) |
-| `s` | Step into the function being called |
-| `c` | Continue until the next breakpoint (or the end) |
-| `p <expr>` | Print the value of a variable or expression |
-| `l` | List the source code around the current line |
-| `b file.py:42` | Set a breakpoint at line 42 of `file.py` |
-| `q` | Quit the debugger |
-
-For a more targeted session, insert `import pdb; pdb.set_trace()` directly
-inside `router.py` — for example right before the `while queue:` loop — to
-pause exactly at the point of interest and inspect the search's live state
-(`p queue`, `p self.occupied_zones`, ...).
-
-### Linting
+| `make install` | Creates `venv/` and installs `pygame`, `flake8`, `mypy` |
+| `make run` | Builds the `fly-in` launcher and runs `maps/01_linear_path.txt` with `--visual` |
+| `make debug` | Runs `main.py` under `pdb` |
+| `make lint` | `flake8 .` + `mypy` with the flags required by the subject |
+| `make lint-strict` | `flake8 .` + `mypy --strict` |
+| `make test` | Runs `run_tests.sh` on every map, comparing with the subject's targets |
+| `make clean` / `fclean` | Removes caches / caches + `venv/` + launcher |
 
 ```bash
-make lint          # flake8 . and mypy . with the flags required by the subject
-make lint-strict    # flake8 . and mypy . --strict (recommended, optional)
+./fly-in maps/01_linear_path.txt            # text trace only
+./fly-in maps/01_linear_path.txt --visual   # trace + pygame window
+venv/bin/pip install pytest && venv/bin/python -m pytest -v   # unit tests
 ```
 
-Both targets run over the whole project (`.`), excluding the `venv/`
-virtual environment, matching the exact commands required by the subject
-(Chapter III.2).
-
-### Cleaning
-
-```bash
-make clean   # removes __pycache__, .mypy_cache, temp files
-make fclean  # clean + removes the virtual environment and the fly-in launcher
-make re      # fclean + all (full rebuild)
-```
-
-## Map File Format (quick reminder)
+### Map format
 
 ```text
-nb_drones: <positive integer>
-
-start_hub: <name> <x> <y> [metadata]
-end_hub: <name> <x> <y> [metadata]
-hub: <name> <x> <y> [metadata]
-
-connection: <name1>-<name2> [metadata]
+nb_drones: 5                                  # must be the first meaningful line
+start_hub: hub 0 0 [color=green]              # exactly one
+end_hub: goal 10 10 [color=yellow]            # exactly one
+hub: roof1 3 4 [zone=restricted color=red]    # zone=normal|blocked|restricted|priority
+hub: corridorA 4 3 [zone=priority max_drones=2]
+connection: hub-roof1                         # zone names contain no dash and no space
+connection: corridorA-tunnelB [max_link_capacity=2]
 ```
 
-- `metadata` is optional, e.g. `[zone=restricted color=red]`, `[max_drones=2]`,
-  `[max_link_capacity=2]`.
-- Zone types: `normal` (1 turn, default), `priority` (1 turn, preferred by the
-  router as a tie-breaker), `restricted` (2 turns), `blocked` (impassable).
-- Lines starting with `#` are comments and are ignored.
+Any error (unknown zone, duplicate connection, bad metadata, unreachable end, ...) stops the program with a message such as `Parsing error: [Line 4] Invalid zone type: 'foo' (expected: normal, blocked, restricted, priority).`
 
-See the subject PDF (Chapter VI) for the full specification.
+### Example
 
----
+Input — the example of the subject (chapter VI):
+
+```text
+nb_drones: 5
+
+start_hub: hub 0 0 [color=green]
+end_hub: goal 10 10 [color=yellow]
+hub: roof1 3 4 [zone=restricted color=red]
+hub: roof2 6 2 [zone=normal color=blue]
+hub: corridorA 4 3 [zone=priority color=green max_drones=2]
+hub: tunnelB 7 4 [zone=normal color=red]
+hub: obstacleX 5 5 [zone=blocked color=gray]
+connection: hub-roof1
+connection: hub-corridorA
+connection: roof1-roof2
+connection: roof2-goal
+connection: corridorA-tunnelB [max_link_capacity=2]
+connection: tunnelB-goal
+```
+
+Output — 6 turns, one line per turn (`D3-hub-roof1` is D3 *in flight* on the connection towards the restricted zone `roof1`):
+
+```text
+D1-corridorA D3-hub-roof1
+D1-tunnelB D2-corridorA D3-roof1
+D1-goal D2-tunnelB D3-roof2 D4-corridorA
+D2-goal D3-goal D4-tunnelB D5-corridorA
+D4-goal D5-tunnelB
+D5-goal
+```
+
+## Project structure
+
+```text
+.
+├── main.py            Simulation      entry point, output of the trace
+├── parser.py          Parser          reads and validates the map
+├── router.py          SpaceTimeRouter the pathfinding / scheduling engine
+├── models.py          Zone, Connection, ZoneType
+├── window_config.py   WindowConfig    window size and map -> screen coordinates
+├── visualizer.py      Visualizer      pygame animation
+├── design/design_pattern.py  DesignPattern   colors, drawing helpers, drone icon
+├── test_fly_in.py     pytest suite
+├── run_tests.sh, Makefile, README.md
+└── maps/, assets/     maps and optional images (background.jpg, drone.png)
+```
+
+```text
+Simulation (main.py)
+ |-- uses --> Parser ------------> Zone, Connection, ZoneType (models.py)
+ |              '----------------> DesignPattern (color validation)
+ |-- uses --> SpaceTimeRouter ---> Zone, Connection
+ '-- uses --> Visualizer --------> WindowConfig (window size, coordinates)
+                '----------------> DesignPattern (drawing helpers)
+```
 
 ## Algorithm
 
-### Overview
+### Choices
 
-The routing engine (`SpaceTimeRouter` in `router.py`) is a **Dijkstra's
-algorithm search over a space-time expanded graph**, applied to each drone
-**one after another** — a technique commonly called **Prioritized Planning**
-(or Sequential / Cooperative Pathfinding) in multi-agent pathfinding
-literature.
-
-In plain terms:
-- Dijkstra's algorithm finds the cheapest way from A to B in a graph by always
-  exploring the cheapest known option first.
-- *"Space-time expanded"* means the search treats *"zone X at turn T"* as a
-  state completely distinct from *"zone X at turn T+1."* This is what lets the
-  algorithm know that a zone can be occupied right now but free two turns
-  later.
-- *"Prioritized Planning"* means the drones are not all planned together as one
-  giant problem (which would be far more expensive). Instead, drone 1 gets the
-  best possible path for itself; that path is then reserved; drone 2 is
-  planned around that reservation; and so on.
-
-### Why a Space-Time Graph?
-
-A plain graph search only knows *"is zone X reachable from zone Y?"* — it has
-no notion of *when*. But this project's rules are fundamentally about timing:
-a zone might be free right now but full in two turns, because another drone is
-already scheduled to be there then. An ordinary Dijkstra over
-`(zones, connections)` cannot express that at all.
-
-The fix used here: every state explored by the search is a pair
-**`(zone name, turn number)`**, not just a zone name:
-
-```python
-visited: Set[Tuple[str, int]] = set()
-...
-if (curr_name, tour) in visited:
-    continue
-```
-
-and every reservation made for a completed drone is keyed the same way:
-
-```python
-self.occupied_zones: Dict[Tuple[str, int], int] = {}
-self.occupied_links: Dict[Tuple[Tuple[str, str], int], int] = {}
-```
-
-This is exactly what lets `"mid" at turn 1` be full while `"mid" at turn 2` is
-free, and lets the router treat "stay" and "move" as two entirely separate
-options, each with its own cost.
-
-### How a Single Drone Finds Its Path — Step by Step
-
-`SpaceTimeRouter._find_path_for_drone` keeps a priority queue (min-heap) of
-*"partial journeys."* Each entry is a tuple `(arrival_turn, priority_score,
-tie_breaker, current_zone, path_so_far)`. The search repeats the following
-loop:
-
-1. **Pop the partial journey with the fewest turns** from the queue. Because
-   it's a min-heap ordered first on `arrival_turn`, this is always the
-   fastest option discovered so far — this is Dijkstra's core guarantee: the
-   first time the destination is popped, the path that got there uses the
-   fewest possible turns, which is the subject's primary scoring metric
-   (VII.6).
-2. **If the current zone is the destination**, return the path immediately —
-   done.
-3. **If this exact `(zone, turn)` state was already explored**, skip it — no
-   need to explore the same state twice.
-4. **Otherwise, generate every valid next state**:
-   - **Wait one turn** in the current zone (always allowed in the start and
-     end zones; elsewhere, only if the zone still has capacity one turn from
-     now).
-   - **Move to each connected neighbor**, provided:
-     - the neighbor is not `blocked`,
-     - the neighbor zone has room at the turn the drone would arrive
-       (`max_drones`),
-     - the connection itself has room at the turn it would be crossed
-       (`max_link_capacity`).
-   - The turn cost of moving depends on the neighbor's type: **2 turns for
-     `restricted` zones, 1 turn otherwise** (`normal` and `priority`). Moving
-     into a `restricted` zone is atomic — the connection is reserved for
-     both turns of the crossing and the drone cannot pause halfway, matching
-     the subject's rule (VII.3) that a drone entering a restricted zone
-     "MUST reach its destination during the next turn."
-5. Push every valid next state back onto the queue, and repeat from step 1.
-
-Because the queue always pops the fastest option first, and every rule
-(capacity, blocked zones, restricted-zone cost) is checked *before* a state is
-even added to the queue, the search never wastes time exploring — and then
-discarding — an invalid state: invalid moves are simply never generated in
-the first place.
-
-> **On the `priority_score` field.** Every heap entry also carries a
-> `priority_score`: the running sum of `-1` for every `PRIORITY` zone the
-> path has passed through, `0` otherwise (see `Zone.priority_bonus` in
-> `models.py`). This value is only ever used as a **secondary** sort key —
-> Python compares heap tuples element by element, so two paths that reach the
-> same zone in the same number of turns are broken in favor of the one that
-> used more `priority` zones, exactly as required by the subject ("`priority`
-> ... should be prioritized in pathfinding algorithms," Chapter VI). Because
-> `arrival_turn` always comes first in the tuple, a path can never win by
-> taking *more* turns just because it passes through more `priority` zones —
-> turn count always dominates, which keeps the algorithm's primary objective
-> (minimizing total simulation turns, VII.6) intact.
-
-### Coordinating Multiple Drones — Prioritized Planning
-
-`SpaceTimeRouter.compute_all_routes` drives the whole fleet:
-
-```python
-for i in range(1, nb_drones + 1):
-    path = self._find_path_for_drone(start, end)
-    ...
-    all_paths[drone_id] = path
-    self._reserve_path(path)
-```
-
-Each drone is planned **completely independently**, but against a map that
-"remembers" every previous drone's reservations. Once a drone's path is found,
-`_reserve_path` writes every `(zone, turn)` and `(connection, turn)` it uses
-into `occupied_zones` / `occupied_links`. The next drone's search then sees a
-slightly more crowded map, and Dijkstra naturally routes it around the
-reserved zones and connections — waiting if needed, or taking a different path
-if one is available and cheaper than waiting.
-
-### Worked Example
-
-Consider this tiny three-zone map with **2 drones**:
-
-```text
-nb_drones: 2
-
-start_hub: base 0 0
-end_hub: goal 2 0
-hub: mid 1 0 [max_drones=1]
-
-connection: base-mid
-connection: mid-goal
-```
-
-```text
-   (start)                (capacity: 1)                 (end)
-  ┌────────┐             ┌───────────┐               ┌────────┐
-  │  base  │─────────────│    mid    │───────────────│  goal  │
-  └────────┘             └───────────┘               └────────┘
-```
-
-`mid` only allows **one drone at a time**. Here is what the router computes,
-turn by turn:
-
-| Turn | Drone 1 (D1) | Drone 2 (D2) | Why |
-|---|---|---|---|
-| 0 | at `base` | at `base` | both start together — the start zone has no capacity limit |
-| 1 | → `mid` | waits at `base` | D1 reaches `mid` first; D2's own move into `mid` at turn 1 would exceed `mid`'s capacity of 1, so the router makes D2 wait instead |
-| 2 | → `goal` (delivered) | → `mid` | `mid` is free again once D1 has left it |
-| 3 | — | → `goal` (delivered) | D2 finishes one turn later than D1, purely because of the wait |
-
-Resulting simulation output, exactly as `main.py`'s `Simulation` prints it
-(verified by actually running the map above through `./fly-in`):
-
-```text
-D1-mid
-D1-goal D2-mid
-D2-goal
-```
-
-> **Implementation note.** D2 spends turn 1 waiting at `base` rather than
-> moving. Internally, every turn spent waiting is stored in the path as
-> `(same_zone, turn + 1)`, exactly like a real move — but
-> `Simulation._actions_for_turn` compares each turn's label against the
-> drone's label on the *previous* turn and skips emitting an action when
-> they match, so a wait never produces a printed `D<id>-<zone>` entry. This
-> is why `D2` is entirely absent from the first line above, in line with the
-> subject's requirement that "drones that do not move in a given turn are
-> omitted from that line" (VII.5).
-
-### Complexity Analysis
-
-Let:
-- **V** = number of zones on the map
-- **E** = number of connections on the map
-- **T** = number of turns explored before a path is found (the time horizon)
-- **N** = number of drones
-
-**Why `log` shows up at all.** The priority queue (`heapq`) is a *binary
-heap*: internally, a binary tree stored in an array and kept arranged so the
-smallest element is always on top. Every push or pop has to move an element up
-or down that tree to restore the ordering — and a binary tree holding `n`
-elements only has `log₂(n)` levels. So each push/pop costs `O(log n)`, not
-`O(n)`. The gain is dramatic:
-
-| Elements queued (n) | Cost of scanning for the minimum (O(n)) | Cost of a heap push/pop (O(log₂ n)) |
+| Problem | Choice | Why |
 |---|---|---|
-| 10 | 10 | ≈ 3.3 |
-| 1,000 | 1,000 | ≈ 10 |
-| 1,000,000 | 1,000,000 | ≈ 20 |
+| Drones must not collide, and a zone can be full *now* but free *later* | Search over **(zone, turn)** states — a space-time graph | Waiting becomes a normal move; capacity is checked per turn |
+| Turn costs are 1 or 2, priority zones must break ties | **Dijkstra** with heap key `(turn, priority_score, counter)` | Turns are compared first (primary score of the subject), priority zones only decide between equally fast paths |
+| Many drones share the map | **Prioritized planning**: route drone 1, reserve its path, route drone 2 around it, ... | Simple, deadlock-free (the schedule is fixed in time), each drone's path is optimal given the traffic before it |
+| Restricted zones | Cost 2, reserved on the connection for 2 turns, no waiting on it | Exactly the rule of chapter VII.3 |
 
-Even with a million entries queued, a heap operation only costs about 20
-comparisons — this is why Dijkstra with a heap scales so much better than
-repeatedly scanning a plain list for the smallest element.
-
-**Per-drone cost.** Because the router searches over `(zone, turn)` pairs
-instead of plain zones, the *effective* graph it explores is `T` times bigger
-than the raw map:
-- number of states ≈ `V · T` (every zone, duplicated across every turn)
-- number of transitions ≈ `E · T` (every connection, duplicated across every
-  turn)
-
-Plugging these into the standard Dijkstra complexity formula
-`O((states + transitions) · log(states))` gives, for a single drone:
+### Pipeline
 
 ```text
-O((V·T + E·T) · log(V·T))
+ map file
+    |
+    v
++-----------+      +------------------+      +----------------------------+
+|  Parser   | ---> | SpaceTimeRouter  | ---> | Simulation                 |
+|  validate |      | one path / drone |      | prints one line per turn   |
++-----------+      +------------------+      +----------------------------+
+                           |
+                           v
+                   +------------------+
+                   |   Visualizer     |   only with --visual
+                   |   pygame window  |
+                   +------------------+
 ```
 
-**Whole-fleet cost.** `compute_all_routes` repeats this search once per drone,
-sequentially:
+### Routing all drones — `compute_all_routes`
 
 ```text
-O(N · (V·T + E·T) · log(V·T))
+for drone i = 1 .. N
+    |
+    v
+_find_path_for_drone()    best path given the reservations made so far
+    |
+    +-- no path found --> ValueError --> "Routing error", exit code 1
+    |
+    v
+_reserve_path()           store (zone, turn) and (link, turn) usage
+    |
+    '--> next drone: it sees the reservations of all previous drones
 ```
 
-### Why This Algorithm Is Efficient
+Reservations are two dictionaries: `occupied_zones[(zone, turn)] = drones present` and `occupied_links[((a, b), turn)] = drones crossing`. Drone `i+1` sees the traffic of drones `1..i` as already fixed.
 
-- **No graph-library overhead or dependency.** Everything is built on Python's
-  `heapq`, a pure generic heap data structure with zero graph-specific logic —
-  satisfying the subject's constraint (Chapter V) without sacrificing
-  performance.
-- **Constraints are enforced *during* generation, not after.** Capacity
-  checks, blocked zones, and restricted-zone costs are all evaluated *before*
-  a state is ever pushed onto the queue — the search never wastes time
-  exploring, and then discarding, an invalid path.
-- **Variable movement costs need no special-casing.** A `restricted` zone
-  simply costs `2` instead of `1` in the exact same turn counter used for
-  every other zone type — no separate code path is required.
-- **`priority` zones are honored without ever compromising turn count.** The
-  `priority_score` tie-breaker (see above) makes the router prefer
-  `priority`-zone routes only among paths that already tie on turn count,
-  so the subject's two requirements — minimize turns first (VII.6), prefer
-  `priority` zones second (Chapter VI) — are both satisfied, in the right
-  order of precedence.
-- **Avoids the combinatorial explosion of true multi-agent search.** Planning
-  all `N` drones *jointly* (searching the combined state of every drone at
-  once) is a dramatically harder problem in general. By solving one drone at a
-  time and reserving its path before moving to the next, the problem stays a
-  sequence of `N` ordinary single-agent shortest-path searches — each one
-  comfortably solvable with classic Dijkstra.
+### One drone — `_find_path_for_drone`
 
-### Limitations
+```text
+push (turn=0, score=0, start)
+        |
+        v
+  .-> queue empty? --- yes --> return None
+  |     | no
+  |     v
+  |   pop the smallest (turn, score, counter)
+  |     |
+  |     v
+  |   zone == end? --- yes --> return the path
+  |     | no
+  |     v
+  |   turn > horizon, or (zone, turn) already visited? --- yes --.
+  |     | no                                                     |
+  |     v                                                        |
+  |   mark (zone, turn) as visited                               |
+  |     |                                                        |
+  |     +--> WAIT: push (turn+1, same zone)                      |
+  |     |          only if the zone has room at turn+1           |
+  |     |          (start and end zones: always allowed)         |
+  |     |                                                        |
+  |     '--> MOVE: for each neighbour that is not blocked:       |
+  |              arrival = turn+1  (turn+2 if restricted)        |
+  |              room in the neighbour at arrival                |
+  |              AND room on the link?                           |
+  |              (link checked at turn and turn+1 if restricted) |
+  |                 yes --> push (arrival, score + priority      |
+  |                         bonus, neighbour); a restricted move |
+  |                         also adds a connection step          |
+  |                 no  --> this move is dropped                 |
+  |                                                              |
+  '-------------------------- next iteration <-------------------'
+```
 
-- **Not globally optimal across the fleet.** Drone 1 always gets the cheapest
-  path *for itself*, with no regard for how that choice affects drone 2,
-  drone 3, and so on. A drone willing to take a one-turn detour could
-  sometimes unblock a much shorter path for a later drone — but this algorithm
-  never considers that trade-off. A fully optimal solution would need a joint
-  multi-agent search (e.g. Conflict-Based Search), at a much higher
-  implementation and runtime cost.
-- **Later drones inherit an increasingly congested map.** On maps with many
-  drones funneling through a narrow bottleneck (the "Capacity hell" or
-  "Ultimate challenge" benchmark categories from the subject), drones planned
-  later in the sequence are more likely to face long waits, since earlier
-  drones have already claimed the fastest slots.
+The horizon is `10 * zones + 50 + 2 * drones` turns; if a drone cannot arrive within it, the program stops with `Routing error`.
 
-## Key Functions Explained
+### Simulation 1 — linear map, 2 drones (`start - waypoint1 - waypoint2 - goal`, all capacities 1)
 
-### `Parser.parse_file` — Reading the Map, Line by Line
+**Drone 1** (empty map): pops `(0,start)`, moves to `waypoint1@1`, `waypoint2@2`, `goal@3`. It is reserved:
 
-Reads the file with a context manager (`with open(...) as f`) so the file
-handle is always closed, even if parsing fails partway through. Every line is
-wrapped in its own `try/except`, and any error is re-raised with the exact
-line number attached — satisfying the subject's requirement (VII.4) that
-*"any other parsing error must stop the program and return a clear error
-message indicating the line and cause."*
+```text
+turn        0        1          2          3
+start       d1       .          .          .
+waypoint1   .        d1         .          .
+waypoint2   .        .          d1         .
+goal        .        .          .          d1
+```
 
-Zone-declaration lines (`start_hub:`, `end_hub:`, `hub:`) are recognized and
-decomposed with a single regular expression, explained in full below.
+**Drone 2** searches the same graph, but `(waypoint1, 1)` is now full:
 
-### `Parser.parse_metadata` — Reading `[key=value ...]` Blocks
+| # | pop `(turn, zone)` | expansions |
+|---|---|---|
+| 1 | `(0, start)` | wait → push `(1, start)`; move to `waypoint1@1` ✗ **full (d1)** |
+| 2 | `(1, start)` | wait → push `(2, start)`; move to `waypoint1@2` ✓ free, push |
+| 3 | `(2, start)` | wait → push `(3, start)`; move to `waypoint1@3` ✓ push |
+| 4 | `(2, waypoint1)` | move to `waypoint2@3` ✓ push; wait, or step back to `start@3` also pushed |
+| … | states of turn 3 and 4 | `waypoint2@3` → `goal@4` |
+| 17 | `(4, goal)` | **end reached → return** `start@0, start@1, waypoint1@2, waypoint2@3, goal@4` |
 
-Turns a metadata string such as `zone=restricted color=red` into a dictionary
-`{"zone": "restricted", "color": "red"}` — matching the subject's rule that
-"tags inside brackets can appear in any order."
+Final schedule (`d2` waits one turn *strategically* at the start, output omits waiting drones):
 
-Unlike a permissive regex-based extractor, this parser is **strict by
-design**: rather than silently ignoring anything that doesn't look like a
-valid tag, every token inside the brackets is explicitly validated, and any
-anomaly stops parsing with a clear, line-numbered error. Specifically, it
-rejects:
+```text
+turn        0      1      2      3      4
+start       d1 d2  d2     .      .      .
+waypoint1   .      d1     d2     .      .
+waypoint2   .      .      d1     d2     .
+goal        .      .      .      d1     d2
 
-- **Unknown keys** — only `zone`, `color`, `max_drones`, and
-  `max_link_capacity` are recognized. A typo such as `xcolor=green` is
-  rejected rather than silently ignored, since the subject requires "any
-  other parsing error" to stop the program with a clear message (VII.4).
-- **Duplicate keys within the same block** — `[zone=restricted
-  zone=blocked]` or `[color=blue color=white]` raises an error instead of
-  silently keeping the last value, since a repeated key in the same bracket
-  is inherently ambiguous.
-- **Malformed `key=value` pairs** — a token like `=value` or `key=` (empty
-  key or value) is rejected.
-- **Nested or unbalanced brackets** — a block such as `[[color=red]]` is
-  rejected rather than being silently unwrapped.
-- **Non-positive or non-integer capacity values** — `max_drones` and
-  `max_link_capacity` must be strictly positive integers, per the subject's
-  explicit requirement ("Capacity values ... must be positive integers,"
-  VII.4). A value like `max_drones=0` or `max_link_capacity=salut` is
-  rejected with a dedicated error message.
-- **Unknown color names** — every `color` value (except the special
-  `rainbow` value used for the Challenger map's goal zone, rendered as a
-  multicolor gradient) is validated against `pygame.Color`'s recognized color
-  names at parse time, via `DesignPattern.color_to_rgb`, so a typo like
-  `color=rainbou` fails immediately instead of only surfacing later when
-  `--visual` is used.
+D1-waypoint1
+D1-waypoint2 D2-waypoint1
+D1-goal D2-waypoint2
+D2-goal                        -> 4 turns (subject's target: <= 6)
+```
 
-This trades a small amount of leniency for predictability: a malformed map
-fails fast, at the exact line responsible, with a message describing exactly
-what was wrong — rather than silently accepting a typo and producing a
-subtly incorrect simulation.
+### Simulation 2 — the subject's example, 5 drones (restricted, priority and capacities)
 
-### Regex Crash Course (for the Patterns Used in `parser.py`)
+Paths found, one drone after the other (`*` = in flight on a connection towards a restricted zone):
 
-| Token | Meaning |
+```text
+d1: hub@0 corridorA@1 tunnelB@2 goal@3
+d2: hub@0 hub@1 corridorA@2 tunnelB@3 goal@4
+d3: hub@0 hub-roof1@1* roof1@2 roof2@3 goal@4
+d4: hub@0 hub@1 hub@2 corridorA@3 tunnelB@4 goal@5
+d5: hub@0 hub@1 hub@2 hub@3 corridorA@4 tunnelB@5 goal@6
+```
+
+```text
+turn   D1          D2          D3           D4          D5
+0      hub         hub         hub          hub         hub
+1      corridorA   hub         hub-roof1*   hub         hub
+2      tunnelB     corridorA   roof1        hub         hub
+3      goal        tunnelB     roof2        corridorA   hub
+4                  goal        goal         tunnelB     corridorA
+5                                           goal        tunnelB
+6                                                       goal
+```
+
+Why the decisions are what they are:
+
+- **d1** reaches `goal` at turn 3 through `corridorA` (priority) and `tunnelB`; the route through `roof1` (restricted, 2 turns) would arrive at turn 4.
+- **d2** has a *tie*: `corridorA → tunnelB → goal` (arrival 4) and `roof1 → roof2 → goal` (arrival 4). The heap key `(turn, priority_score, …)` breaks it: the `priority` zone gives score −1, so `corridorA` wins. Without this second key the tie would be arbitrary.
+- **d3**: the entrance of the corridor is busy (the link `hub–corridorA`, capacity 1, is taken at turns 0 and 1), so d3 could only enter it at turn 3 and would arrive at turn 5. The restricted route arrives at turn 4, so it is chosen — this is how the load is **distributed across several paths**. Its link `hub–roof1` is reserved for turns 0 and 1, and it cannot wait on it.
+- **d4, d5** wait at `hub` (unlimited capacity) until the corridor is free: one drone enters per turn, which is the throughput of the bottlenecks (`hub–corridorA` capacity 1, `tunnelB` with `max_drones=1`).
+
+## Answers to the questions of the subject
+
+### How efficient is the algorithm? Can it work with a large number of drones?
+
+Each drone's path is **optimal** for the traffic already reserved (fewest turns, then most priority zones): Dijkstra on a time-expanded graph with non-negative costs. The fleet schedule is built greedily (see *Accuracy*). Measured on synthetic maps (Python 3, one machine, `SpaceTimeRouter.compute_all_routes` only):
+
+| Map | Zones | Drones | Turns | Time | Peak memory |
+|---|---|---|---|---|---|
+| Linear corridor | 10 | 100 | 108 | 0.2 s | 0.7 MB |
+| Linear corridor | 10 | 500 | 508 | 2.6 s | 11.6 MB |
+| Linear corridor | 10 | 1000 | 1008 | 9.6 s | 48.4 MB |
+| 6×6 grid | 36 | 200 | 109 | 1.8 s | 1.4 MB |
+| 10×10 grid | 100 | 200 | 117 | 10.2 s | 2.4 MB |
+
+So a thousand drones are handled, but the cost grows quickly with the fleet (see below). No number of drones is hard-coded; the only limit is the turn horizon described above.
+
+### What is the complexity? Why?
+
+Notation: `Z` zones, `E` connections, `N` drones, `M` number of turns of the schedule, `L` length of a path (`L ≤ M`).
+
+- **Parser:** `O(lines)` plus one DFS `O(Z + E)` to check that the end is reachable before routing.
+- **One drone:** the search only visits states `(zone, turn)` with `turn ≤` its arrival turn, i.e. at most `Z · M` states. Each state creates 1 wait + `deg(zone)` moves, so at most `M · (Z + 2E)` heap pushes, each `O(log)`. Each push also **copies the path** (`path + [...]`), which costs `O(L)`. This gives `O(M · (Z + E) · (log + M))` per drone.
+- **Whole fleet:** `N` searches, so `O(N · M · (Z + E) · (log + M))`. This is an upper bound; on a corridor (`M ≈ N`) the measured time grows roughly with `N²` (table above).
+- **Why this cost:** the factor `M` exists because waiting is allowed, so a zone becomes `M` states. The `log` comes from the heap (needed because moves cost 1 or 2 and priority zones break ties). The extra `M` comes from copying paths, which we kept for readability; storing a parent pointer per state instead would remove it (`O(N · M · (Z + E) · log)`).
+
+### Are paths recalculated or cached?
+
+Never recalculated: every drone is routed **once**. The result (`routes`) is reused by the trace printer and by the visualizer. Between drones nothing can be cached: each path depends on the reservations created by the previous ones, and those reservations (`occupied_zones`, `occupied_links`) are the shared state. The visualizer only interpolates stored routes; it never routes again.
+
+### How does it impact memory?
+
+- Reservations and stored routes: `O(N · L)` entries.
+- During one search: `visited` is `O(Z · M)` and freed after each drone; the heap holds path copies (`O(L)` each), which is the dominant peak (48 MB for 1000 drones on a corridor).
+
+### How does the visual representation help?
+
+See *Visual representation* below.
+
+### Accuracy — how close to the best schedule?
+
+- **Per drone:** exact (see above).
+- **Whole fleet:** not guaranteed optimal. Prioritized planning is a heuristic: drone 1 always takes its best path, even if a slightly slower path for drone 1 would let the others finish earlier, and the result depends on the drone order.
+- **Check against a lower bound.** If `k` drones can leave the start per turn and the shortest path has `d` moves, no schedule can beat `ceil(N / k) + d − 1` turns. On the synthetic maps above our result **equals** this bound every time:
+
+| Map | `k` | `d` | Lower bound | Ours |
+|---|---|---|---|---|
+| Linear corridor, 10 drones | 1 | 9 | 18 | 18 |
+| Linear corridor, 1000 drones | 1 | 9 | 1008 | 1008 |
+| 6×6 grid, 50 drones | 2 | 10 | 34 | 34 |
+| 6×6 grid, 200 drones | 2 | 10 | 109 | 109 |
+| 10×10 grid, 200 drones | 2 | 18 | 117 | 117 |
+
+- **Possible improvements:** try several drone orders and keep the best schedule; or a global search over the time-expanded graph (max-flow style).
+
+### Performance benchmarks
+
+Run `make test` to compare the maps of the subject with their targets (`run_tests.sh` prints ✅ when the result is within target).
+
+| Map | Drones | Target | Ours |
+|---|---|---|---|
+| Linear path | 2 | ≤ 6 | TBD |
+| Simple fork | 4 | ≤ 8 | TBD |
+| Basic capacity | 4 | ≤ 6 | TBD |
+| Dead end trap | 5 | ≤ 12 | TBD |
+| Circular loop | 6 | ≤ 15 | TBD |
+| Priority puzzle | 5 | ≤ 12 | TBD |
+| Maze nightmare | 8 | ≤ 30 | TBD |
+| Capacity hell | 12 | ≤ 35 | TBD |
+| Ultimate challenge | 15 | ≤ 45 | TBD |
+| Impossible dream (optional) | 25 | record 45 | TBD |
+
+**Optimizations implemented:** turn count compared first and priority only as a tie-break; early exit as soon as the end is popped; pruning of already visited `(zone, turn)` states; `O(1)` dictionary reservations; adjacency list built once; unlimited waiting at start/end; reachability check in the parser before routing; a single routing pass reused by every output.
+
+**Challenger map:** solving it is optional. As the fleet planning is greedy, beating the reference record is not guaranteed; the improvements listed in *Accuracy* are the next steps.
+
+## Visual representation
+
+`python main.py <map> --visual` opens a `pygame` window; the terminal trace is still printed.
+
+- Every zone is a circle colored by its `color` metadata (`rainbow` is drawn as a gradient), labeled `name [drones/max]`.
+- Every connection is a line labeled `used/cap:N`; a link being crossed turns thick and yellow, so bottlenecks are visible.
+- All drones move **simultaneously** and smoothly between zones (interpolation), showing at a glance who waits and where traffic queues up.
+- A HUD shows `Turn: x / total` and the state (running or paused).
+- Drones sharing a zone are spread in a small circle so their identifiers stay readable.
+
+| Key | Action |
 |---|---|
-| `\d` | one digit (`0`–`9`) |
-| `\w` | one "word" character (letter, digit, or `_`) |
-| `\s` | one whitespace character (space, tab, newline) |
-| `+` | one or more of the previous token |
-| `*` | zero or more of the previous token |
-| `?` | zero or one of the previous token (makes it optional) |
-| `(...)` | a *capturing* group — its match can be retrieved afterward |
-| `(?:...)` | a *non-capturing* group — groups tokens together without keeping the match |
-| `[^...]` | any character **except** the ones listed |
-| `^` / `$` | start / end of the string |
-| `\b` | a word boundary (the edge between a word character and a non-word one) |
-| `\|` | "or" |
+| `SPACE` | Pause / resume |
+| `RIGHT ARROW` or `P` | Force the next turn |
 
-`Parser` uses three small, targeted regexes rather than one large one:
+Missing `assets/background.jpg` or `assets/drone.png` never crashes the program (plain background and a vector drone are used instead).
 
-- `_INT_RE = re.compile(r"-?[0-9]+")` — validates a signed integer
-  (coordinates, which may be negative).
-- `_POSITIVE_INT_RE = re.compile(r"[0-9]+")` — validates an unsigned integer
-  (capacities, which must be strictly positive).
-- `_ZONE_NAME_RE = re.compile(r"[^\s\-]+")` — matches "any run of characters
-  that are not whitespace or a dash," which is exactly how the subject
-  defines a valid zone name ("Zone names can use any valid characters except
-  dashes and spaces," VII.4).
+## Testing
 
-`parse_metadata` deliberately does **not** use a regex to find `key=value`
-pairs: it splits the bracket's contents on whitespace and validates each
-token explicitly (checking for a recognized key, a non-empty value, no
-duplicate keys, no leftover brackets). A regex-based extractor using
-`re.findall` would silently *skip* any substring that didn't match a known
-pattern — which would make a typo like `xcolor=green` simply vanish from the
-metadata instead of raising the line-numbered error the subject requires
-(VII.4).
-
-`Parser._split_metadata` locates a line's `[...]` block with plain string
-methods (`text.find("[")`, `block.endswith("]")`) rather than a regex, so
-that nested or unbalanced brackets (`[[color=red]]`) can be explicitly
-detected and rejected instead of being silently mishandled by a greedy `.*`
-regex.
-
-### `SpaceTimeRouter.__init__` — Building the Adjacency List
-
-Builds `self.adj`, a dictionary mapping every zone name to the list of
-`(neighbor_zone, connection)` pairs reachable from it. Since connections are
-bidirectional (subject, Chapter VI), each connection is registered on
-**both** of its endpoints:
-
-```python
-for conn in connections:
-    self.adj[conn.zone1.name].append((conn.zone2, conn))
-    self.adj[conn.zone2.name].append((conn.zone1, conn))
-```
-
-### `SpaceTimeRouter.compute_all_routes` and `_find_path_for_drone`
-
-Covered in detail in the [Algorithm](#algorithm) section above — the former
-drives the fleet one drone at a time, the latter is the per-drone space-time
-Dijkstra search.
-
-### `SpaceTimeRouter._reserve_path` — Locking In a Found Path
-
-Once a drone's path is found, this walks it turn by turn, incrementing
-`occupied_zones[(zone, turn)]` for every step. Whenever two consecutive steps
-land on *different* zones, it also increments
-`occupied_links[(sorted_pair, turn)]` for the connection that was crossed.
-Sorting the pair of zone names before using it as a dictionary key
-(`sorted([zone_name, next_zone_name])`) guarantees that a connection is
-recognized as "the same connection" no matter which direction it is crossed
-in — `base → mid` and `mid → base` must count against the same shared
-capacity, since connections are bidirectional.
-
-### `WindowConfig` — Sizing the pygame Window
-
-Computes an appropriate window size purely from the spread of zone
-coordinates on the map, so a tiny 3-zone map doesn't open a cavernous empty
-window and a large sprawling map isn't cramped — clamped between a sensible
-minimum and the actual screen resolution. `to_screen_coords` then converts a
-zone's map coordinates into pixel coordinates, flipping the Y axis (screen
-coordinates grow downward; map coordinates conventionally grow upward) and
-anchoring everything within the drawable margin.
-
-### `Visualizer.run` — The Animation Loop
-
-For every rendered frame, and for each drone independently,
-`_compute_frame` determines the drone's "current" and "next" zone in its own
-path based on the current simulation turn, then linearly interpolates its
-on-screen pixel position between the two using a `progress` value that
-increases every frame and resets once a turn boundary is crossed. This
-interpolation is what produces smooth, continuous motion instead of drones
-instantly jumping from one zone to the next once per turn. The frame is then
-drawn in three passes — `_draw_connections`, `_draw_zones`, `_draw_drones`
-— each a small, single-purpose method.
-
----
-
-## Visual Representation
-
-The `pygame` visualizer (`Visualizer`) turns the raw turn-by-turn text trace
-into a live, readable animation, satisfying the subject's Visual
-Representation requirement (VII.1) through a graphical interface.
-
-What it shows, and why it helps:
-
-- **All drones animate simultaneously**, matching the simulation's actual
-  rules — this makes it immediately obvious, at a glance, whether drones are
-  genuinely moving together or queuing up behind one another.
-- **Zones are colored by type** (`normal` = blue, `blocked` = red,
-  `restricted` = orange, `priority` = green by default, or a custom color
-  from the map file), each labeled with its name and maximum capacity — so a
-  capacity bottleneck is visible before it even happens in the simulation.
-  The special `rainbow` color (used on the Challenger map's goal zone) is
-  rendered as a multicolor gradient circle rather than a single flat color.
-- **Connections are drawn as lines**, labeled with their traffic capacity;
-  a connection currently being crossed is highlighted (thicker, bright
-  yellow) versus an idle one (thin, dark) — making it easy to spot exactly
-  which link is the current bottleneck.
-- **Smooth interpolated movement**: drones glide between zones instead of
-  teleporting once per turn, which makes the schedule far easier to follow in
-  real time than reading raw text output.
-- **A drone icon** is drawn either from a custom PNG (`assets/drone.png`) if
-  present, or procedurally as a small vector icon (rotor arms and four
-  motors) if the asset is missing — the visualizer never crashes for lack of
-  an image file.
-- **Automatic spreading** of drones that would otherwise overlap exactly
-  (for instance, several drones waiting together at the start zone) into a
-  small circular pattern, so individual drone IDs stay readable.
-- **A turn counter and status HUD** at the top of the screen (current turn /
-  total turns, running or paused).
-- **Interactive playback controls** — `Space` to pause or resume, and the
-  right arrow (or `P`) to manually step forward one turn at a time — useful
-  for pausing exactly on a turn of interest during a peer-review walkthrough.
-- **An optional background image** (`assets/background.jpg`), with a
-  graceful fallback to a plain solid color if the file is missing or fails to
-  load, so the visualizer works out of the box with zero required assets.
-
-Together, these turn an abstract log such as `D1-mid D2-corridorA` into
-something that can be watched, paused, and explained live — which is
-particularly useful given that the subject explicitly warns that a peer
-reviewer "may ask you to explain your code."
-
-## Object-Oriented Design
-
-Chapter V of the subject explicitly requires the project to be "completely
-object-oriented," to be demonstrated during peer review. Concretely, this
-project avoids loose module-level logic wherever there is real state or
-behavior to encapsulate:
-
-- **`Parser`** owns all parsing state (`zones`, `connections`, `nb_drones`,
-  ...) and every parsing rule as a method.
-- **`SpaceTimeRouter`** owns the adjacency list and every occupancy
-  reservation, and exposes routing as methods.
-- **`Zone`**, **`Connection`**, **`ZoneType`** model the map's data, with
-  behavior (`cost`, `priority_bonus`, `is_full`, `other`) attached directly
-  to the data it concerns.
-- **`WindowConfig`** owns the window's derived geometry and the
-  map-to-screen coordinate transform.
-- **`Visualizer`** owns the pygame window, the animation state (current
-  turn, pause flag, interpolation progress), and every drawing step as a
-  method — nothing about rendering lives at module scope.
-- **`DesignPattern`** groups every color constant, color-parsing rule, and
-  drawing helper as static/class methods on a single class, so the parser
-  (validation) and the visualizer (rendering) share one authoritative,
-  object-oriented source of truth instead of importing loose functions.
-- **`Simulation`** (in `main.py`) is the top-level orchestrator: it owns the
-  run's configuration, drives parsing → routing → printing → visualizing as
-  methods, and is built from `sys.argv` through a dedicated
-  `Simulation.from_argv` class method rather than a free-standing
-  `parse_args` function.
-
-The only module-level function left in the whole project is `main()` itself
-— an unavoidable one line of glue (`Simulation.from_argv(sys.argv[1:]).run()`)
-required by Python's `if __name__ == "__main__":` entry-point convention.
-
----
+- `python -m pytest -v` (`test_fly_in.py`): parser (valid and 44 invalid maps), routing scenarios with their optimal turn count, restricted/blocked/priority rules, 150 drones, clean error exits, the real command line, and every map of `maps/`. Each trace is re-checked by an **independent validator** (zone and link capacities, 2-turn restricted moves, everyone delivered).
+- `make lint` / `make lint-strict`: `flake8` and `mypy` (both mandatory, both clean).
 
 ## Resources
 
-### Documentation & References
+- Python documentation: [`heapq`](https://docs.python.org/3/library/heapq.html), [`typing`](https://docs.python.org/3/library/typing.html), [`enum`](https://docs.python.org/3/library/enum.html), [`re`](https://docs.python.org/3/library/re.html)
+- [pygame documentation](https://www.pygame.org/docs/), [mypy](https://mypy.readthedocs.io/en/stable/), [flake8](https://flake8.pycqa.org/en/latest/), [pytest](https://docs.pytest.org/)
+- Cormen, Leiserson, Rivest, Stein — *Introduction to Algorithms* (single-source shortest paths); [Dijkstra's algorithm](https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm)
+- Silver, D. — *Cooperative Pathfinding* (space-time A*, prioritized planning); search terms: "Multi-Agent Path Finding", "Prioritized Planning"
 
-- Python `heapq` — <https://docs.python.org/3/library/heapq.html>
-- Python `itertools` — <https://docs.python.org/3/library/itertools.html>
-- Python `re` module — <https://docs.python.org/3/library/re.html>
-- Python regular expression HOWTO — <https://docs.python.org/3/howto/regex.html>
-- Python `typing` — <https://docs.python.org/3/library/typing.html>
-- Python `enum` — <https://docs.python.org/3/library/enum.html>
-- Pygame documentation — <https://www.pygame.org/docs/>
-- mypy documentation — <https://mypy.readthedocs.io/en/stable/>
-- flake8 documentation — <https://flake8.pycqa.org/en/latest/>
-- Dijkstra's algorithm — Cormen, Leiserson, Rivest & Stein, *Introduction to
-  Algorithms*, chapter on single-source shortest paths; also Wikipedia:
-  <https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm>
-- For further background on cooperative pathfinding, see "Multi-Agent Path
-  Finding (MAPF)" and "Prioritized Planning" — useful search terms for
-  understanding the trade-offs between sequential and fully joint multi-agent
-  search.
+### How AI was used
 
-### AI Usage
+An Anthropic Claude model was used for the following tasks:
 
-AI assistance (an Anthropic Claude model) was used for the following,
-specific tasks:
+- **Makefile:** reviewing the rules so that they use the virtual environment and match the `lint` / `lint-strict` commands of the subject.
+- **Understanding:** explaining the space-time Dijkstra in `router.py`, its complexity, and the regular expressions of `parser.py`.
+- **Parser:** hardening the metadata validation (unknown/duplicate keys, non-positive capacities, nested brackets, invalid colors).
+- **Router:** finding a bug where a longer path through priority zones could beat a shorter one; the heap key now compares turns first.
+- **Object-oriented refactoring:** turning loose functions of `main.py`, `visualizer.py` and `design_pattern.py` into classes.
+- **Review against the subject (v1.6):** translating every message and docstring to English; finding that the in-flight connection label must be `<zone1>-<zone2>`, that the pygame banner polluted the trace, and that `run_tests.sh` used wrong targets and opened a blocking window.
+- **Tests and lint:** writing the pytest suite and its independent trace validator, and fixing a flake8 `E402` warning in `design_pattern.py`.
+- **Documentation:** drafting this README and its diagrams, and measuring the synthetic benchmarks above.
 
-- **Reviewing and correcting the `Makefile`** — making the `install`, `run`,
-  `debug`, and `lint` targets consistently use the virtual environment
-  created by `make install`, and switching the `lint`/`lint-strict` targets
-  to run `flake8 .` / `mypy .` (excluding `venv/`) so they match the exact
-  commands required by the subject (Chapter III.2).
-- **Explaining the existing pathfinding implementation** in `router.py`: the
-  space-time graph model, the Dijkstra search loop, the Big-O complexity
-  derivation, and the reasoning behind `heapq`'s `O(log n)` push/pop cost.
-- **Explaining the regular expressions** used in `parser.py`, token by token.
-- **Hardening `parser.py`'s metadata validation** — identifying and fixing a
-  series of parsing edge cases (unknown metadata keys silently ignored,
-  duplicate keys within the same bracket, non-positive capacity values,
-  nested brackets, and invalid color names) that an earlier implementation
-  did not reject, in line with the subject's requirement that any invalid
-  input produce a clear, line-numbered error rather than being silently
-  accepted.
-- **Finding and fixing a routing-priority bug in `router.py`.** The router's
-  priority queue previously sorted primarily on an accumulated cost in which
-  moving into a `priority` zone was free (`travel_cost + priority_bonus =
-  0`), while every other move cost `1`. Because this accumulated cost was
-  used as the *primary* Dijkstra sort key, a longer path (more turns) that
-  happened to cross several `priority` zones could be returned instead of a
-  genuinely shorter one — silently violating the subject's primary scoring
-  rule that total turn count must be minimized first (VII.6). The fix
-  reorders the heap key so `arrival_turn` is always compared first, with the
-  `priority`-zone bonus demoted to a secondary tie-breaker used only between
-  paths that already take the same number of turns.
-- **Converting `main.py`, `visualizer.py`, and `design_pattern.py` from
-  loose module-level functions into classes** (`Simulation`, `Visualizer`,
-  `DesignPattern`) to fully satisfy the subject's "completely
-  object-oriented" constraint (Chapter V), and translating every docstring
-  in the project to English.
-
-This assistance was used strictly as a learning aid — to understand
-*already-written* code, to identify and reason through edge cases and a
-genuine correctness bug in existing logic, and to help structure and
-restructure the code and documentation — not to generate new application
-logic wholesale from scratch. This section should be reviewed and extended by
-nrajaoar to reflect the complete, accurate picture of any AI assistance used
-across the whole project, in line with the transparency expectations set out
-in the subject's AI Instructions chapter (Chapter II).
+All AI-assisted code was read, run against the tests, `flake8` and `mypy`, and is understood and explainable by the author.
