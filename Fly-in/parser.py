@@ -75,8 +75,8 @@ class Parser:
                 the map is inconsistent once fully parsed.
         """
         for line_num, raw_line in enumerate(lines, start=1):
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
+            line = raw_line.rstrip("\r")
+            if not line.strip() or line.startswith("#"):
                 continue
             try:
                 self._parse_line(line)
@@ -89,25 +89,37 @@ class Parser:
         keyword.
 
         Args:
-            line: The stripped, non-empty, non-comment line to parse.
+            line: The non-empty, non-comment line to parse, exactly
+                as written in the file (spacing is checked here).
         """
+        if line != line.strip():
+            raise ParseError("Leading or trailing whitespace is not allowed.")
+        if "\t" in line:
+            raise ParseError("Tabs are not allowed (use single spaces).")
+
         keyword, sep, rest = line.partition(":")
-        keyword = keyword.strip()
         if not sep:
             raise ParseError(
                 f"Unrecognized line format: '{line}' "
                 "(expected 'keyword: value')"
             )
-
-        if keyword == "nb_drones":
-            self._parse_nb_drones(rest)
-            return
-
-        if keyword not in HUB_PREFIXES and keyword != "connection":
+        if keyword != keyword.strip():
+            raise ParseError(f"No space is allowed before ':' in '{line}'.")
+        if keyword != "nb_drones" and keyword not in HUB_PREFIXES \
+                and keyword != "connection":
             raise ParseError(
                 f"Unrecognized keyword: '{keyword}' (expected: nb_drones, "
                 "start_hub, end_hub, hub or connection)"
             )
+        if len(rest) < 2 or rest[0] != " " or rest[1].isspace():
+            raise ParseError(
+                f"Exactly one space is required after '{keyword}:'."
+            )
+        value = rest[1:]
+
+        if keyword == "nb_drones":
+            self._parse_nb_drones(value)
+            return
         if self.nb_drones == 0:
             raise ParseError(
                 "The first meaningful line must be "
@@ -115,9 +127,9 @@ class Parser:
             )
 
         if keyword == "connection":
-            self._parse_connection(rest)
+            self._parse_connection(value)
         else:
-            self._parse_hub(keyword, rest)
+            self._parse_hub(keyword, value)
 
     def _parse_nb_drones(self, value: str) -> None:
         """Handle 'nb_drones: <positive integer>' (allowed only once).
@@ -127,7 +139,7 @@ class Parser:
         """
         if self.nb_drones != 0:
             raise ParseError("'nb_drones' is defined more than once.")
-        self.nb_drones = self._parse_positive_int(value.strip(), "nb_drones")
+        self.nb_drones = self._parse_positive_int(value, "nb_drones")
 
     def _parse_hub(self, prefix: str, rest: str) -> None:
         """Handle a start_hub / end_hub / hub line.
@@ -140,12 +152,12 @@ class Parser:
         is_end = prefix == "end_hub"
 
         body, meta_str = self._split_metadata(rest)
-        tokens = body.split()
-        if len(tokens) != 3:
+        tokens = body.split(" ")
+        if len(tokens) != 3 or "" in tokens:
             raise ParseError(
                 f"Invalid hub format: '{body}' (expected: "
-                "'<name> <x> <y> [metadata]', the name must contain "
-                "neither spaces nor dashes)"
+                "'<name> <x> <y> [metadata]' with single spaces; the "
+                "name must contain neither spaces nor dashes)"
             )
         name, x_str, y_str = tokens
 
@@ -253,10 +265,10 @@ class Parser:
             string when there is no metadata block.
 
         Raises:
-            ParseError: If brackets are missing, duplicated, nested, or
-                if text follows the closing bracket.
+            ParseError: If brackets are missing, duplicated, nested,
+                empty, if the spacing before '[' is not a single space,
+                or if text follows the closing bracket.
         """
-        text = text.strip()
         start = text.find("[")
         if start == -1:
             if "]" in text:
@@ -265,7 +277,13 @@ class Parser:
                 )
             return text, ""
 
-        body = text[:start].strip()
+        body = text[:start]
+        if body:
+            if not body.endswith(" ") or body.endswith("  "):
+                raise ParseError(
+                    "Exactly one space is required before '['."
+                )
+            body = body[:-1]
         block = text[start:]
         if not block.endswith("]"):
             raise ParseError(
@@ -273,6 +291,8 @@ class Parser:
                 "bracket, or text after ']')"
             )
         inner = block[1:-1]
+        if not inner:
+            raise ParseError("Empty metadata block '[]'.")
         if "[" in inner or "]" in inner:
             raise ParseError(
                 f"Only one '[...]' block is allowed, with no nested "
@@ -298,7 +318,13 @@ class Parser:
                 the syntax is otherwise invalid.
         """
         meta: Dict[str, str] = {}
-        for token in meta_str.split():
+        tokens = meta_str.split(" ") if meta_str else []
+        for token in tokens:
+            if not token:
+                raise ParseError(
+                    "Metadata entries must be separated by exactly one "
+                    "space (no space after '[' or before ']')."
+                )
             key, sep, value = token.partition("=")
             if not sep or not key or not value or "=" in value:
                 raise ParseError(
