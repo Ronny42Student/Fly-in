@@ -15,6 +15,7 @@ HUB_PREFIXES = ("start_hub", "end_hub", "hub")
 _INT_RE = re.compile(r"-?[0-9]+")
 _POSITIVE_INT_RE = re.compile(r"[0-9]+")
 _ZONE_NAME_RE = re.compile(r"[^\s\-]+")
+_COMMENT_RE = re.compile(r"(^|\s)#.*$")
 
 
 class ParseError(ValueError):
@@ -76,8 +77,8 @@ class Parser:
                 the map is inconsistent once fully parsed.
         """
         for line_num, raw_line in enumerate(lines, start=1):
-            line = raw_line.rstrip("\r")
-            if not line.strip() or line.startswith("#"):
+            line = _COMMENT_RE.sub("", raw_line.rstrip("\r")).rstrip()
+            if not line.strip():
                 continue
             try:
                 self._parse_line(line)
