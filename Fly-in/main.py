@@ -171,7 +171,11 @@ class Simulation:
 
 def main() -> None:
     """Program entry point."""
-    Simulation.from_argv(sys.argv[1:]).run()
+    try:
+        Simulation.from_argv(sys.argv[1:]).run()
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.", file=sys.stderr)
+        sys.exit(130)
 
 
 if __name__ == "__main__":
