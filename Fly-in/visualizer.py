@@ -230,6 +230,10 @@ class Visualizer:
         frame, along with the currently active links and zone
         occupancy.
 
+        Each drone moves between two consecutive zone steps of its
+        path. The interpolation lasts as long as the move itself, so a
+        move towards a restricted zone is spread over its 2 turns.
+
         Args:
             cfg: The window configuration, for coordinate conversion.
             zone_routes: Each drone's zone-only path.
@@ -245,31 +249,41 @@ class Visualizer:
         active_links: List[Tuple[str, str]] = []
         zone_counts = {z: 0 for z in self.zones}
 
+        t = current_turn + progress
+
         for drone_id, path in zone_routes.items():
-            pos_now = path[0][0]
-            pos_next = path[0][0]
+            from_name, from_tour = path[0]
+            to_name, to_tour = from_name, from_tour
 
             for zone_name, tour in path:
-                if tour <= current_turn:
-                    pos_now = zone_name
-                if tour <= current_turn + 1:
-                    pos_next = zone_name
+                if tour <= t:
+                    from_name, from_tour = zone_name, tour
+                else:
+                    to_name, to_tour = zone_name, tour
+                    break
+            else:
+                to_name, to_tour = from_name, from_tour
 
-            pt_now = cfg.to_screen_coords(
-                self.zones[pos_now].x, self.zones[pos_now].y
+            span = max(1, to_tour - from_tour)
+            frac = min(1.0, (t - from_tour) / span)
+
+            pt_from = cfg.to_screen_coords(
+                self.zones[from_name].x, self.zones[from_name].y
             )
-            pt_next = cfg.to_screen_coords(
-                self.zones[pos_next].x, self.zones[pos_next].y
+            pt_to = cfg.to_screen_coords(
+                self.zones[to_name].x, self.zones[to_name].y
             )
 
-            interp_x = int(pt_now[0] + (pt_next[0] - pt_now[0]) * progress)
-            interp_y = int(pt_now[1] + (pt_next[1] - pt_now[1]) * progress)
-            positions[drone_id] = (interp_x, interp_y)
+            positions[drone_id] = (
+                int(pt_from[0] + (pt_to[0] - pt_from[0]) * frac),
+                int(pt_from[1] + (pt_to[1] - pt_from[1]) * frac),
+            )
 
-            if pos_now != pos_next:
-                active_links.append((pos_now, pos_next))
+            if from_name != to_name:
+                active_links.append((from_name, to_name))
 
-            zone_counts[pos_now] += 1
+            if span == 1 or t - from_tour < 1:
+                zone_counts[from_name] += 1
 
         return positions, active_links, zone_counts
 
