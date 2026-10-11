@@ -2,7 +2,7 @@
 them."""
 
 import sys
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from parser import ParseError, Parser
 from router import PathStep, SpaceTimeRouter
@@ -12,7 +12,12 @@ from visualizer import Visualizer
 class Simulation:
     """Orchestrates parsing, routing, and output for one Fly-in run."""
 
-    def __init__(self, map_path: str, use_visualizer: bool) -> None:
+    def __init__(
+        self,
+        map_path: str,
+        use_visualizer: bool,
+        show_details: bool = False
+    ) -> None:
         """Store the simulation's configuration.
 
         Args:
@@ -22,6 +27,7 @@ class Simulation:
         """
         self.map_path = map_path
         self.use_visualizer = use_visualizer
+        self.show_details = show_details
         self.parser = Parser()
         self.routes: Dict[str, List[PathStep]] = {}
 
@@ -101,6 +107,36 @@ class Simulation:
             print(f"Routing error: {e}", file=sys.stderr)
             sys.exit(1)
 
+    def _details_for_turn(self, turn: int) -> str:
+        """Describe zone and link occupancy at the end of a turn.
+
+        Args:
+            turn: The simulation turn to describe.
+
+        Returns:
+            ' | zone:<name> <n>/max:<max> ... | link:<a-b> <n>/cap:<max> ...'
+        """
+        zones: Dict[str, int] = {}
+        links: Dict[Tuple[str, str], int] = {}
+        for path in self.routes.values():
+            steps = [(lb, t) for lb, t, conn in path if not conn]
+            for (a, t_a), (b, t_b) in zip(steps, steps[1:]):
+                if t_b == turn:
+                    zones[b] = zones.get(b, 0) + 1
+                if a != b and t_a < turn <= t_b:
+                    key = (min(a, b), max(a, b))
+                    links[key] = links.get(key, 0) + 1
+
+        caps = {c.key: c.max_link_capacity for c in self.parser.connections}
+        zone_txt = " ".join(
+            f"zone:{n} {c}/max:{self.parser.zones[n].max_drones}"
+            for n, c in zones.items()
+        )
+        link_txt = " ".join(
+            f"link:{k[0]}-{k[1]} {c}/cap:{caps[k]}" for k, c in links.items()
+        )
+        return f" | {zone_txt} | {link_txt}"
+
     def _print_trace(self) -> None:
         """Print the turn-by-turn movement trace, in the format required
         by the subject (VII.5): one line per turn, space-separated
@@ -113,7 +149,8 @@ class Simulation:
         for turn in range(1, max_turns + 1):
             actions = self._actions_for_turn(turn)
             if actions:
-                print(" ".join(actions))
+                line = " ".join(actions)
+                print(line)
 
     def _actions_for_turn(self, turn: int) -> List[str]:
         """Build the list of 'D<id>-<label>' actions for a single turn.
